@@ -127,8 +127,18 @@ namespace LostTemple
 
         void OnDestroy() { SceneManager.sceneLoaded -= OnSceneLoaded; }
 
+        bool sceneHandled;
+
+        // La toute première scène est déjà chargée quand le jeu démarre : sceneLoaded n'est pas
+        // forcément appelé pour elle, d'où ce rattrapage (sinon le menu ou le HUD restent cachés).
+        void Start()
+        {
+            if (!sceneHandled) OnSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
+        }
+
         void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
+            sceneHandled = true;
             int idx = Array.IndexOf(RoomScenes, scene.name);
             CurrentRoom = idx;
             Time.timeScale = 1f;
