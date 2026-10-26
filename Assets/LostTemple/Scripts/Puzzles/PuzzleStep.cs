@@ -17,6 +17,8 @@ namespace LostTemple
         public bool usesSensor = true;
         [Tooltip("Point où jaillissent les étincelles quand l'étape est réussie.")]
         public Transform fxAnchor;
+        [Tooltip("Point de vue de la caméra pendant l'énigme (optionnel).")]
+        public Transform cameraPose;
 
         public bool IsActive { get; private set; }
         public bool IsDone { get; private set; }

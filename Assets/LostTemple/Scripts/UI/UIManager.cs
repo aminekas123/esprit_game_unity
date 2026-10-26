@@ -34,6 +34,10 @@ namespace LostTemple
         GameObject settingsBackTarget;
         Slider sensSlider, micSlider, volSlider;
         Text altToggleText, hapticsToggleText;
+        GameObject moveStick;
+        Text missionText;
+        Image damageFlash;
+        Coroutine flashRoutine;
 
         PuzzleStep step;
         Coroutine toastRoutine, titleRoutine;
@@ -89,7 +93,7 @@ namespace LostTemple
                     var gm = GameManager.Instance;
                     float t = Time.time - gm.RunStartTime;
                     string stars = "<color=#F2B847>" + new string('★', gm.Stars) + "</color><color=#555A70>" + new string('★', 3 - gm.Stars) + "</color>";
-                    victoryText.text = $"<size=110>{stars}</size>\n\nVous avez récupéré l'artefact et échappé au temple.\n\nTemps : {(int)t / 60} min {(int)t % 60:00} s\nIndices utilisés : {gm.Hints}\nChutes de la boule : {gm.Falls}";
+                    victoryText.text = $"<size=110>{stars}</size>\n\nVous avez récupéré l'artefact et échappé au temple.\n\nTemps : {(int)t / 60} min {(int)t % 60:00} s\nReliques : {gm.Relics}/{GameManager.RelicsInGame}\nIndices utilisés : {gm.Hints}\nChutes et pièges : {gm.Falls}";
                     victory.SetActive(true);
                     break;
             }
@@ -98,6 +102,15 @@ namespace LostTemple
         void Update()
         {
             if (diagnostic.activeSelf) RefreshDiagnostic();
+            if (hud.activeSelf)
+            {
+                var rm = RoomManager.Current;
+                missionText.text = rm != null ? rm.MissionText.TrimEnd('\n') : "";
+                missionText.transform.parent.gameObject.SetActive(rm != null);
+                var pc = PlayerController.Instance;
+                moveStick.SetActive(step == null && pc != null && !pc.Frozen && !modal.activeSelf);
+                if (step == null && rm != null) objectiveText.text = rm.ExploreObjective;
+            }
             if (hud.activeSelf && step != null)
             {
                 float p = step.Progress;
@@ -196,8 +209,8 @@ namespace LostTemple
             // Indice
             var hb = Panel("Hint", hud.transform, new Color(0.25f, 0.17f, 0.05f, 0.95f));
             var hbrt = hb.rectTransform;
-            hbrt.anchorMin = new Vector2(0.05f, 1); hbrt.anchorMax = new Vector2(0.95f, 1); hbrt.pivot = new Vector2(0.5f, 1);
-            hbrt.sizeDelta = new Vector2(0, 220); hbrt.anchoredPosition = new Vector2(0, -370);
+            hbrt.anchorMin = new Vector2(0.05f, 0.62f); hbrt.anchorMax = new Vector2(0.95f, 0.62f); hbrt.pivot = new Vector2(0.5f, 0.5f);
+            hbrt.sizeDelta = new Vector2(0, 220); hbrt.anchoredPosition = Vector2.zero;
             hintText = Label(hb.transform, "", 40);
             Stretch(hintText.rectTransform, 30, 20, 120, 20);
             var close = MakeButton(hb.transform, "×", HideHint, 100, new Color(0, 0, 0, 0.3f));
@@ -205,6 +218,35 @@ namespace LostTemple
             crt.anchorMin = crt.anchorMax = new Vector2(1, 0.5f); crt.pivot = new Vector2(1, 0.5f);
             crt.sizeDelta = new Vector2(100, 100); crt.anchoredPosition = new Vector2(-10, 0);
             hintBox = hb.gameObject;
+
+            // Missions de la salle
+            var mp = Panel("Missions", hud.transform, new Color(0.03f, 0.04f, 0.1f, 0.55f));
+            var mrt = mp.rectTransform;
+            mrt.anchorMin = mrt.anchorMax = new Vector2(0, 1); mrt.pivot = new Vector2(0, 1);
+            mrt.anchoredPosition = new Vector2(20, -365);
+            mp.gameObject.AddComponent<VerticalLayoutGroup>().padding = new RectOffset(24, 24, 14, 14);
+            var mfit = mp.gameObject.AddComponent<ContentSizeFitter>();
+            mfit.horizontalFit = ContentSizeFitter.FitMode.PreferredSize; mfit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            missionText = Label(mp.transform, "", 34, TextAnchor.UpperLeft);
+            missionText.horizontalOverflow = HorizontalWrapMode.Overflow;
+
+            // Joystick de déplacement de l'explorateur
+            var stickBg = Panel("Move Stick", hud.transform, new Color(1, 1, 1, 0.1f));
+            var srt = stickBg.rectTransform;
+            srt.anchorMin = srt.anchorMax = new Vector2(0.5f, 0); srt.pivot = new Vector2(0.5f, 0);
+            srt.sizeDelta = new Vector2(380, 380); srt.anchoredPosition = new Vector2(0, 90);
+            var sknob = Panel("Knob", stickBg.transform, new Color(Gold.r, Gold.g, Gold.b, 0.85f));
+            sknob.rectTransform.sizeDelta = new Vector2(150, 150);
+            sknob.raycastTarget = false;
+            var mstick = stickBg.gameObject.AddComponent<VirtualStick>();
+            mstick.knob = sknob.rectTransform;
+            mstick.onChanged = v => { if (PlayerController.Instance != null) PlayerController.Instance.StickInput = v; };
+            moveStick = stickBg.gameObject;
+
+            // Flash rouge quand l'explorateur est touché
+            damageFlash = Panel("Damage", hud.transform, new Color(0.8f, 0.05f, 0.02f, 0f));
+            Stretch(damageFlash.rectTransform);
+            damageFlash.raycastTarget = false;
 
             // Titre de salle (grand texte centré qui s'efface)
             titleText = Label(hud.transform, "", 80, TextAnchor.MiddleCenter, Gold);
@@ -424,6 +466,22 @@ namespace LostTemple
             t.text = "";
         }
 
+        public void FlashDamage()
+        {
+            if (flashRoutine != null) StopCoroutine(flashRoutine);
+            flashRoutine = StartCoroutine(Flash());
+        }
+
+        IEnumerator Flash()
+        {
+            for (float t = 0; t < 0.6f; t += Time.unscaledDeltaTime)
+            {
+                damageFlash.color = new Color(0.8f, 0.05f, 0.02f, 0.45f * (1f - t / 0.6f));
+                yield return null;
+            }
+            damageFlash.color = Color.clear;
+        }
+
         public void ShowHint(string hint)
         {
             if (!hintBox.activeSelf) GameManager.Instance.AddHint();
@@ -477,7 +535,13 @@ namespace LostTemple
         {
             step = s;
             for (int i = fallbackArea.childCount - 1; i >= 0; i--) Destroy(fallbackArea.GetChild(i).gameObject);
-            if (s == null) { objectiveText.text = ""; sensorText.text = ""; progressBar.SetActive(false); return; }
+            if (s == null)
+            {
+                objectiveText.text = "";
+                sensorText.text = PlayerController.Instance != null ? "Déplacez l'explorateur avec le joystick" : "";
+                progressBar.SetActive(false);
+                return;
+            }
 
             var sm = SensorManager.Instance;
             objectiveText.text = s.objective;

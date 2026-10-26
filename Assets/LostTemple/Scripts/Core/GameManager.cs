@@ -36,11 +36,14 @@ namespace LostTemple
         public float RunStartTime { get; private set; }
         public int Hints { get; private set; }
         public int Falls { get; private set; }
+        public int Relics { get; private set; }
+        public const int RelicsInGame = 12;
+        public void AddRelic() => Relics++;
         public void AddHint() => Hints++;
         public void AddFall() => Falls++;
 
-        /// <summary>1 à 3 étoiles : une de perdue au-delà de 3 indices, une autre au-delà de 15 minutes.</summary>
-        public int Stars => 3 - (Hints > 3 ? 1 : 0) - (Time.time - RunStartTime > 900f ? 1 : 0);
+        /// <summary>1 à 3 étoiles : +1 avec au moins 8 reliques sur 12, +1 avec peu d'indices et de chutes.</summary>
+        public int Stars => 1 + (Relics >= RelicsInGame * 2 / 3 ? 1 : 0) + (Hints <= 3 && Falls <= 6 ? 1 : 0);
 
         public event Action<GameState> StateChanged;
         public event Action<int> RoomLoaded;
@@ -128,6 +131,7 @@ namespace LostTemple
             RunStartTime = Time.time;
             Hints = 0;
             Falls = 0;
+            Relics = 0;
         }
 
         public void LoadRoom(int index)
