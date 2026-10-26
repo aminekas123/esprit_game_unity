@@ -476,7 +476,7 @@ namespace LostTemple.EditorTools
 
         // ================================================================== Explorateur
 
-        static GameObject Explorer(Transform root, Vector3 pos, float yaw, bool playable)
+        static GameObject Explorer(Transform root, Vector3 pos, float yaw, bool playable, bool lanternDrains = false)
         {
             var go = new GameObject(playable ? "Explorer" : "Explorer (menu)");
             go.transform.SetParent(root, false);
@@ -525,10 +525,14 @@ namespace LostTemple.EditorTools
 
             // Lanterne : éclaire les salles sombres autour de l'explorateur
             var lantern = Empty("Lantern", body, new Vector3(0.36f, 0.95f, 0.12f));
-            Prim(PrimitiveType.Cylinder, "Lantern Body", lantern, Vector3.zero, new Vector3(0.12f, 0.08f, 0.12f), FlameLit, false);
+            var lanternFlame = Prim(PrimitiveType.Cylinder, "Lantern Body", lantern, Vector3.zero, new Vector3(0.12f, 0.08f, 0.12f), FlameLit, false);
             var ll = new GameObject("Lantern Light").AddComponent<Light>();
             ll.transform.SetParent(lantern, false);
             ll.type = LightType.Point; ll.color = new Color(1f, 0.75f, 0.45f); ll.range = 5f; ll.intensity = 1.6f; ll.shadows = LightShadows.None;
+
+            var lan = go.AddComponent<Lantern>();
+            lan.lightSource = ll; lan.flame = lanternFlame.GetComponent<Renderer>(); lan.drains = lanternDrains;
+            go.AddComponent<PlayerCostume>();
 
             var anim = go.AddComponent<CharacterAnimator>();
             anim.body = body; anim.legL = legL; anim.legR = legR; anim.armL = armL; anim.armR = armR;
@@ -872,6 +876,91 @@ namespace LostTemple.EditorTools
             return scene;
         }
 
+        // ================================================================== Nouveautés : secrets, rocher, silence, momies
+
+        static void Secret(Transform root, Vector3 pos, int roomIndex)
+        {
+            var go = new GameObject("Secret Relic");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = pos;
+            var relicGo = Box("Secret Relic Gem", go.transform, Vector3.zero, Vector3.one * 0.42f, Mat("SecretRelic", new Color(0.6f, 0.85f, 1f), 0.9f, 0.9f, true), false);
+            relicGo.GetComponent<Renderer>().sharedMaterial.SetColor("_EmissionColor", new Color(0.4f, 0.8f, 1f) * 2.5f);
+            relicGo.transform.rotation = Quaternion.Euler(45, 0, 45);
+            var sc = relicGo.AddComponent<SphereCollider>();
+            sc.isTrigger = true; sc.radius = 2f;
+            relicGo.AddComponent<LostTemple.Relic>();
+            var sr = go.AddComponent<SecretRelic>();
+            sr.gesture = Journal.Secrets[roomIndex];
+            sr.relic = relicGo;
+            sr.revealFx = FxBurst(go.transform, "Reveal FX", Vector3.zero, new Color(0.5f, 0.85f, 1f, 1f), 0.05f, 0.18f, 1.2f, 3f, -0.2f, 80, Vector3.one * 0.5f);
+            sr.revealFx.GetComponent<ParticleSystemRenderer>().sharedMaterial = ParticleMat();
+        }
+
+        static Boulder MakeBoulder(Transform root, float endZ)
+        {
+            var go = new GameObject("Boulder Chase");
+            go.transform.SetParent(root, false);
+            var rock = Prim(PrimitiveType.Sphere, "Boulder", go.transform, new Vector3(0, 1.4f, -11f), Vector3.one * 2.8f, Mat("BoulderStone", new Color(0.5f, 0.42f, 0.32f), 0f, 0.15f, false, Slabs), false);
+            var b = go.AddComponent<Boulder>();
+            b.rock = rock.transform; b.endZ = endZ;
+            b.crashDust = FxBurst(go.transform, "Crash Dust", Vector3.zero, new Color(0.7f, 0.6f, 0.45f, 0.6f), 0.4f, 1.3f, 1.8f, 3f, -0.05f, 120, new Vector3(3f, 1f, 1f));
+            b.crashDust.GetComponent<ParticleSystemRenderer>().sharedMaterial = SoftParticleMat();
+            return b;
+        }
+
+        static void Quiet(Transform root, Vector3 center, Vector3 size)
+        {
+            var go = new GameObject("Quiet Zone");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = center;
+            var col = go.AddComponent<BoxCollider>();
+            col.isTrigger = true; col.size = size; col.center = new Vector3(0, size.y / 2f, 0);
+            var qz = go.AddComponent<QuietZone>();
+            qz.darts = FxBurst(go.transform, "Darts", Vector3.zero, new Color(0.9f, 0.85f, 0.7f, 1f), 0.05f, 0.1f, 0.5f, 9f, 2f, 40, new Vector3(1.5f, 0.2f, 1.5f));
+            // Indices visuels : dalles à motif d'oreille et fentes à fléchettes dans les murs
+            Box("Quiet Floor Mark", root, center + new Vector3(0, 0.01f, 0), new Vector3(size.x * 0.9f, 0.02f, size.z * 0.9f), Mat("QuietMark", new Color(0.2f, 0.25f, 0.4f), 0f, 0.3f), false);
+            for (float z = -size.z / 2f + 1f; z < size.z / 2f; z += 1.5f)
+            {
+                Box("Dart Slot", root, center + new Vector3(-size.x / 2f + 0.05f, 1.2f, z), new Vector3(0.1f, 0.12f, 0.5f), Pit, false);
+                Box("Dart Slot", root, center + new Vector3(size.x / 2f - 0.05f, 1.2f, z), new Vector3(0.1f, 0.12f, 0.5f), Pit, false);
+            }
+        }
+
+        static void Mummy(Transform root, Vector3[] path)
+        {
+            var bandage = Mat("Bandage", new Color(0.78f, 0.72f, 0.58f), 0f, 0.15f, false, Bricks);
+            var eyeMat = Mat("MummyEye", new Color(0.3f, 0.05f, 0.02f), 0f, 0.9f, true);
+            eyeMat.SetColor("_EmissionColor", new Color(1f, 0.25f, 0.05f) * 3f);
+            var go = new GameObject("Mummy Guardian");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = path[0];
+            Transform Limb(string n, Vector3 p, Vector3 child, Vector3 scale)
+            {
+                var pivot = Empty(n, go.transform, p);
+                Prim(PrimitiveType.Capsule, n + " Wrap", pivot, child, scale, bandage, false);
+                return pivot;
+            }
+            var legL = Limb("Leg L", new Vector3(-0.15f, 0.9f, 0), new Vector3(0, -0.45f, 0), new Vector3(0.24f, 0.45f, 0.24f));
+            var legR = Limb("Leg R", new Vector3(0.15f, 0.9f, 0), new Vector3(0, -0.45f, 0), new Vector3(0.24f, 0.45f, 0.24f));
+            Prim(PrimitiveType.Capsule, "Torso", go.transform, new Vector3(0, 1.3f, 0), new Vector3(0.55f, 0.45f, 0.38f), bandage, false);
+            var armL = Limb("Arm L", new Vector3(-0.35f, 1.55f, 0), new Vector3(0, -0.35f, 0), new Vector3(0.17f, 0.35f, 0.17f));
+            var armR = Limb("Arm R", new Vector3(0.35f, 1.55f, 0), new Vector3(0, -0.35f, 0), new Vector3(0.17f, 0.35f, 0.17f));
+            Prim(PrimitiveType.Sphere, "Head", go.transform, new Vector3(0, 1.95f, 0), new Vector3(0.36f, 0.4f, 0.36f), bandage, false);
+            Prim(PrimitiveType.Sphere, "Eye L", go.transform, new Vector3(-0.08f, 1.98f, 0.16f), Vector3.one * 0.07f, eyeMat, false);
+            Prim(PrimitiveType.Sphere, "Eye R", go.transform, new Vector3(0.08f, 1.98f, 0.16f), Vector3.one * 0.07f, eyeMat, false);
+            var vision = new GameObject("Vision").AddComponent<Light>();
+            vision.transform.SetParent(go.transform, false);
+            vision.transform.localPosition = new Vector3(0, 1.9f, 0.2f);
+            vision.transform.localRotation = Quaternion.Euler(28f, 0, 0);
+            vision.type = LightType.Spot; vision.spotAngle = 70f; vision.range = 6f; vision.intensity = 6f;
+            vision.color = new Color(1f, 0.45f, 0.2f); vision.shadows = LightShadows.None;
+
+            var wp = new Transform[path.Length];
+            for (int i = 0; i < path.Length; i++) wp[i] = Empty("Waypoint " + i, root, path[i]);
+            var e = go.AddComponent<Enemy>();
+            e.waypoints = wp; e.legL = legL; e.legR = legR; e.armL = armL; e.armR = armR; e.visionLight = vision;
+        }
+
         // ================================================================== Salle 1 — Accéléromètre
 
         static Scene BuildRoom1()
@@ -942,6 +1031,17 @@ namespace LostTemple.EditorTools
             var st = MakeStation(root, "Levier", new Vector3(-4.6f, 0f, -4.8f), puzzle);
             var player = Explorer(root, new Vector3(-3f, 0.05f, -10f), 0f, true);
             FollowCamera(cam, player);
+
+            // Cinématique d'intro : la grille de l'entrée (mur gauche) se referme derrière l'explorateur
+            Box("Entrance Frame", root, new Vector3(-6.9f, 3.3f, -10f), new Vector3(0.6f, 0.5f, 3f), Carved);
+            Box("Entrance Hole", root, new Vector3(-6.98f, 1.5f, -10f), new Vector3(0.05f, 3f, 2.4f), Pit, false);
+            var slab = Box("Entrance Slab", root, new Vector3(-6.75f, 9f, -10f), new Vector3(0.4f, 3.1f, 2.6f), Carved);
+            var intro = root.gameObject.AddComponent<IntroCinematic>();
+            intro.slab = slab.transform;
+            intro.slabClosedPosition = new Vector3(-6.75f, 1.55f, -10f);
+            intro.landingDust = FxBurst(root, "Landing Dust", Vector3.zero, new Color(0.75f, 0.65f, 0.5f, 0.6f), 0.3f, 0.9f, 1.2f, 2f, -0.05f, 60, new Vector3(1.5f, 0.2f, 1.5f));
+            intro.landingDust.GetComponent<ParticleSystemRenderer>().sharedMaterial = SoftParticleMat();
+            Secret(root, new Vector3(-5f, 0.9f, 6.5f), 0);
             AddRoomManager(root, 0, door, exit, new PuzzleStep[] { puzzle }, new[] { st });
             return scene;
         }
@@ -996,6 +1096,7 @@ namespace LostTemple.EditorTools
             var st = MakeStation(root, "Boussole", new Vector3(-1.4f, 0f, -5.5f), compass);
             var player = Explorer(root, new Vector3(-4f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
+            Secret(root, new Vector3(5f, 0.9f, -10.5f), 1);
             AddRoomManager(root, 1, door, exit, new PuzzleStep[] { compass }, new[] { st });
             return scene;
         }
@@ -1050,22 +1151,24 @@ namespace LostTemple.EditorTools
             var st = MakeStation(root, "Statues", new Vector3(0f, 0f, 1.6f), statueAlign);
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
-            AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign }, new[] { st });
+            Secret(root, new Vector3(-5.5f, 0.9f, 8f), 2);
+            var rm3 = AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign }, new[] { st });
+            rm3.boulder = MakeBoulder(root, 9.4f);
             return scene;
         }
 
         // ================================================================== Salle 4 — Micro : le monstre
 
-        static MonsterController Monster(Transform root, Vector3 pos)
+        static MonsterController Monster(Transform root, Vector3 pos, bool shadow = false)
         {
-            var skin = Mat("MonsterSkin", new Color(0.24f, 0.36f, 0.2f), 0.05f, 0.55f);
-            var belly = Mat("MonsterBelly", new Color(0.62f, 0.52f, 0.33f), 0f, 0.4f);
+            var skin = shadow ? Mat("ShadowSkin", new Color(0.16f, 0.1f, 0.22f), 0.1f, 0.6f) : Mat("MonsterSkin", new Color(0.24f, 0.36f, 0.2f), 0.05f, 0.55f);
+            var belly = shadow ? Mat("ShadowBelly", new Color(0.35f, 0.2f, 0.4f), 0f, 0.5f) : Mat("MonsterBelly", new Color(0.62f, 0.52f, 0.33f), 0f, 0.4f);
             var horn = Mat("MonsterHorn", new Color(0.88f, 0.82f, 0.7f), 0f, 0.5f);
             var teeth = Mat("Teeth", new Color(0.95f, 0.93f, 0.85f), 0f, 0.6f);
             var claw = Mat("Claw", new Color(0.12f, 0.1f, 0.1f), 0.3f, 0.7f);
             var eyeMat = Mat("MonsterEye", new Color(0.3f, 0.05f, 0.02f), 0f, 0.9f, true);
 
-            var go = new GameObject("Monster");
+            var go = new GameObject(shadow ? "Shadow Guardian" : "Monster");
             go.transform.SetParent(root, false);
             go.transform.localPosition = pos;
             go.transform.localRotation = Quaternion.Euler(0, 180f, 0);   // il regarde vers l'explorateur
@@ -1188,6 +1291,8 @@ namespace LostTemple.EditorTools
             var st = MakeStation(root, "Monstre", new Vector3(0f, 0f, -0.5f), wake);
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
+            Quiet(root, new Vector3(0f, 0f, -8.6f), new Vector3(14f, 3f, 3f));
+            Secret(root, new Vector3(5.5f, 0.9f, 5f), 3);
             AddRoomManager(root, 3, door, exit, new PuzzleStep[] { wake, push }, new[] { st, null });
             return scene;
         }
@@ -1236,6 +1341,9 @@ namespace LostTemple.EditorTools
             var st = MakeStation(root, "Cachette", new Vector3(0f, 0f, 1f), prox);
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
+            Mummy(root, new[] { new Vector3(-5.5f, 0f, -2.5f), new Vector3(5.5f, 0f, -2.5f) });
+            Mummy(root, new[] { new Vector3(5.5f, 0f, 6.8f), new Vector3(-5.5f, 0f, 6.8f) });
+            Secret(root, new Vector3(-5.5f, 0.9f, 4.5f), 4);
             AddRoomManager(root, 4, door, exit, new PuzzleStep[] { prox }, new[] { st });
             return scene;
         }
@@ -1288,7 +1396,8 @@ namespace LostTemple.EditorTools
             var door = Door(root, new Vector3(0f, 1.5f, 11.75f));
             var exit = Exit(root, new Vector3(0f, 0f, 10.7f));
             var st = MakeStation(root, "Gouffre", new Vector3(0f, 0f, -1.5f), light);
-            var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
+            var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true, true);
+            Secret(root, new Vector3(5.5f, 0.9f, -4f), 5);
             FollowCamera(cam, player);
             AddRoomManager(root, 5, door, exit, new PuzzleStep[] { light }, new[] { st });
             return scene;
@@ -1404,9 +1513,9 @@ namespace LostTemple.EditorTools
             artL.type = LightType.Point; artL.color = new Color(1f, 0.75f, 0.35f); artL.range = 6f; artL.intensity = 3f;
 
             // Esprit Coyote sur son rocher
-            Prim(PrimitiveType.Sphere, "Coyote Rock", root, new Vector3(0, 0.1f, 2f), new Vector3(2.2f, 0.6f, 1.8f), DarkStone);
-            var coyote = Coyote(root, new Vector3(0, 0.35f, 2f));
-            coyote.keyProp = Key(root, "Key", new Vector3(0, 2.5f, 2f));
+            Prim(PrimitiveType.Sphere, "Coyote Rock", root, new Vector3(-4f, 0.1f, 1.5f), new Vector3(2.2f, 0.6f, 1.8f), DarkStone);
+            var coyote = Coyote(root, new Vector3(-4f, 0.35f, 1.5f));
+            coyote.keyProp = Key(root, "Key", new Vector3(-4f, 2.5f, 1.5f));
 
             var photos = root.gameObject.AddComponent<PhotoPuzzle>();
             photos.sensor = SensorKind.Camera;
@@ -1415,7 +1524,7 @@ namespace LostTemple.EditorTools
             photos.hint = "Approchez-vous d'un objet de la bonne couleur pour qu'il remplisse le cadre doré, avec assez de lumière.";
             photos.coyote = coyote;
             photos.fxAnchor = coyote.head;
-            photos.cameraPose = Pose("Cam Coyote", root, new Vector3(0, 2.6f, -1.5f), new Vector3(0, 1.6f, 2f));
+            photos.cameraPose = Pose("Cam Coyote", root, new Vector3(-2.6f, 2.6f, -2.2f), new Vector3(-4f, 1.5f, 1.5f));
 
             var password = root.gameObject.AddComponent<PasswordPuzzle>();
             password.usesSensor = false;
@@ -1425,6 +1534,33 @@ namespace LostTemple.EditorTools
             password.coyote = coyote; password.photos = photos;
             password.fxAnchor = coyote.head;
             password.cameraPose = photos.cameraPose;
+
+            // Boss final : le gardien des ténèbres surgit devant la porte
+            var boss = Monster(root, new Vector3(0, 0.3f, 4.2f), true);
+            var bossFight = root.gameObject.AddComponent<BossFightPuzzle>();
+            bossFight.sensor = SensorKind.Light;
+            bossFight.objective = "Vainquez le gardien des ténèbres";
+            bossFight.tutorial = "Le gardien des ténèbres surgit du sol pour protéger l'artefact !\n\n<b>1.</b> Éblouissez-le : couvrez ou éclairez le capteur de lumière.\n<b>2.</b> Esquivez ses coups : penchez le téléphone du côté opposé à la plaque rouge.\n<b>3.</b> Achevez-le : criez pour pousser la boule d'énergie jusqu'à lui.";
+            bossFight.hint = "Regardez la plaque qui rougit : c'est là qu'il va frapper. Penchez-vous de l'autre côté.";
+            bossFight.boss = boss; bossFight.coyote = coyote;
+            bossFight.bossHidden = Empty("Boss Hidden", root, new Vector3(0, -5f, 4.2f));
+            bossFight.bossStand = Empty("Boss Stand", root, new Vector3(0, 0.3f, 4.2f));
+            bossFight.arenaCenter = Empty("Arena Center", root, new Vector3(0, 0.05f, -0.5f));
+            var slamMat = Mat("SlamMarker", new Color(0.25f, 0.08f, 0.06f), 0.2f, 0.4f, true);
+            bossFight.slamMarkerLeft = Box("Slam Marker L", root, new Vector3(-1.6f, 0.02f, -0.5f), new Vector3(2.2f, 0.03f, 2.2f), slamMat, false).GetComponent<Renderer>();
+            bossFight.slamMarkerRight = Box("Slam Marker R", root, new Vector3(1.6f, 0.02f, -0.5f), new Vector3(2.2f, 0.03f, 2.2f), slamMat, false).GetComponent<Renderer>();
+            var bball = Prim(PrimitiveType.Sphere, "Boss Energy Ball", root, new Vector3(0, 0.95f, 0.6f), Vector3.one * 0.9f, Mat("Energy", new Color(0.4f, 0.75f, 1f), 0.2f, 0.9f, true), false);
+            var bbl = new GameObject("Ball Light").AddComponent<Light>();
+            bbl.transform.SetParent(bball.transform, false);
+            bbl.type = LightType.Point; bbl.color = new Color(0.4f, 0.8f, 1f); bbl.range = 5f; bbl.intensity = 2f; bbl.shadows = LightShadows.None;
+            bossFight.ball = bball.transform; bossFight.ballRenderer = bball.GetComponent<Renderer>(); bossFight.ballLight = bbl;
+            bossFight.ballStart = Empty("Boss Ball Start", root, new Vector3(0, 0.95f, 0.8f));
+            bossFight.ballEnd = Empty("Boss Ball End", root, new Vector3(0, 0.95f, 3.1f));
+            var bimpact = FxBurst(root, "Boss Impact", new Vector3(0, 1.5f, 3.2f), new Color(0.6f, 0.4f, 1f, 1f), 0.15f, 0.5f, 1.2f, 8f, 0.2f, 160, new Vector3(0.5f, 0.5f, 0.5f));
+            bimpact.GetComponent<ParticleSystemRenderer>().sharedMaterial = ParticleMat();
+            bossFight.impactFx = bimpact;
+            bossFight.fxAnchor = bossFight.bossStand;
+            bossFight.cameraPose = Pose("Cam Boss", root, new Vector3(0, 4.2f, -5.8f), new Vector3(0, 2f, 2.8f));
 
             var key = root.gameObject.AddComponent<KeyDoorPuzzle>();
             key.usesSensor = false;
@@ -1444,11 +1580,12 @@ namespace LostTemple.EditorTools
                 Torch(root, t);
 
             var exit = Exit(root, new Vector3(0f, 0f, 8.6f));
-            var st1 = MakeStation(root, "Coyote", new Vector3(0f, 0f, -0.5f), photos);
+            var st1 = MakeStation(root, "Coyote", new Vector3(-4f, 0f, -1.2f), photos);
             var st3 = MakeStation(root, "Porte", new Vector3(0f, 0f, 4.6f), key);
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
-            AddRoomManager(root, 6, door, exit, new PuzzleStep[] { photos, password, key }, new[] { st1, null, st3 });
+            Secret(root, new Vector3(5.5f, 0.9f, 0f), 6);
+            AddRoomManager(root, 6, door, exit, new PuzzleStep[] { photos, password, bossFight, key }, new[] { st1, null, null, st3 });
             return scene;
         }
     }

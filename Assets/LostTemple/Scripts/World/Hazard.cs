@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace LostTemple
@@ -31,6 +32,19 @@ namespace LostTemple
 
         public bool IsActive => mode == HazardMode.Always || active;
 
+        static readonly List<Hazard> all = new List<Hazard>();
+        void OnEnable() { all.Add(this); }
+        void OnDisable() { all.Remove(this); }
+
+        /// <summary>Distance au piège actif le plus proche (sert à faire monter la musique).</summary>
+        public static float NearestActiveDistance(Vector3 p)
+        {
+            float best = float.MaxValue;
+            foreach (var h in all)
+                if (h.IsActive) best = Mathf.Min(best, Vector3.Distance(h.transform.position, p));
+            return best;
+        }
+
         void Start()
         {
             if (movingPart != null) basePos = movingPart.localPosition;
@@ -41,7 +55,7 @@ namespace LostTemple
         void Update()
         {
             if (mode == HazardMode.Always) return;
-            float t = Mathf.Repeat(Time.time + offset, period);
+            float t = Mathf.Repeat(Time.time * GameManager.Instance.HazardSpeed + offset, period);
             active = t < activeTime;
             float warn = !active && t > period - 0.8f ? Mathf.InverseLerp(period - 0.8f, period, t) : 0f;
 

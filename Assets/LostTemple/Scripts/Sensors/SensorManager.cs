@@ -49,6 +49,16 @@ namespace LostTemple
         public bool MicPermissionDenied { get; private set; }
 
         public event Action SettingsChanged;
+        /// <summary>Secousse franche du téléphone (ou touche R dans l'éditeur).</summary>
+        public event Action Shaken;
+        /// <summary>Le téléphone vient d'être retourné écran vers le bas (ou touche F).</summary>
+        public event Action Flipped;
+        public bool IsFaceDown { get; private set; }
+
+        Vector3 accelPrevRaw;
+        float shakeCooldown;
+        bool wasCovered;
+        float prevHeading = -1f;
 
         void Awake()
         {
@@ -147,8 +157,27 @@ namespace LostTemple
         {
             float dt = Time.unscaledDeltaTime;
 
+            shakeCooldown -= dt;
             if (Accelerometer.current != null)
-                accelFiltered = Vector3.Lerp(accelFiltered, Accelerometer.current.acceleration.ReadValue(), 1f - Mathf.Exp(-12f * dt));
+            {
+                Vector3 raw = Accelerometer.current.acceleration.ReadValue();
+                accelFiltered = Vector3.Lerp(accelFiltered, raw, 1f - Mathf.Exp(-12f * dt));
+                // Secousse : variation brutale de l'accélération entre deux images
+                if ((raw - accelPrevRaw).magnitude > 1.3f && shakeCooldown <= 0f) FireShake();
+                accelPrevRaw = raw;
+                // Retourné : la gravité pointe vers l'arrière de l'écran (z positif en convention Unity)
+                bool faceDown = accelFiltered.z > 0.8f;
+                if (faceDown && !IsFaceDown) { SensorStats.Flips++; Flipped?.Invoke(); }
+                IsFaceDown = faceDown;
+                SensorStats.MaxTiltDeg = Mathf.Max(SensorStats.MaxTiltDeg, Vector3.Angle(accelFiltered, accelOffset));
+            }
+            if (Keyboard.current != null)
+            {
+                if (Keyboard.current.rKey.wasPressedThisFrame) FireShake();
+                if (Keyboard.current.fKey.wasPressedThisFrame) { SensorStats.Flips++; Flipped?.Invoke(); }
+            }
+            var gyroDev = UnityEngine.InputSystem.Gyroscope.current;
+            if (gyroDev != null) SensorStats.GyroTotalDeg += Mathf.Abs(gyroDev.angularVelocity.ReadValue().z) * Mathf.Rad2Deg * dt;
 
             if (IsHardwareAvailable(SensorKind.Compass))
             {
@@ -168,6 +197,15 @@ namespace LostTemple
                 proximityMax = Mathf.Max(proximityMax, ProximitySensor.current.distance.ReadValue());
 
             UpdateMicrophone(dt);
+            if (micClip != null && micLevel > 0.0001f)
+                SensorStats.MaxSoundDb = Mathf.Max(SensorStats.MaxSoundDb, 20f * Mathf.Log10(micLevel) + 100f);   // estimation dB SPL
+            SensorStats.Lux(GetLux());
+            bool covered = IsCovered();
+            if (covered && !wasCovered) SensorStats.ProximityCovers++;
+            wasCovered = covered;
+            float hd = GetHeading();
+            if (prevHeading >= 0f) SensorStats.CompassTotalDeg += Mathf.Abs(Mathf.DeltaAngle(prevHeading, hd));
+            prevHeading = hd;
 
             // Cap virtuel pour le mode secours
             fallbackHeading = Mathf.Repeat(fallbackHeading + (GetKeyboardAxis(Key.E, Key.Q) + FallbackTurn) * 90f * Sensitivity * dt, 360f);
@@ -190,6 +228,14 @@ namespace LostTemple
             bool flat = Mathf.Abs(an.z) > 0.7f;
             float az = flat ? Mathf.Atan2(h.y, m.y) : Mathf.Atan2(-h.z, -m.z);
             return Mathf.Repeat(az * Mathf.Rad2Deg, 360f);
+        }
+
+        /// <summary>Déclenche une secousse (aussi appelé par le bouton tactile de secours).</summary>
+        public void FireShake()
+        {
+            shakeCooldown = 0.5f;
+            SensorStats.Shakes++;
+            Shaken?.Invoke();
         }
 
         // ------------------------------------------------------------------ Getters utilisés par les énigmes

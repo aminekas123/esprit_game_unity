@@ -41,18 +41,51 @@ namespace LostTemple
         public int Hints { get; private set; }
         public int Falls { get; private set; }
         public int Relics { get; private set; }
+        public int Secrets { get; private set; }
         public void AddHint() => Hints++;
         public void AddFall() => Falls++;
+        public void AddSecret() => Secrets++;
+
+        // Modes de jeu
+        /// <summary>Mode difficile : pièges plus rapides, 1 seule vie au départ, pas d'indices.</summary>
+        public bool HardMode { get; private set; }
+        /// <summary>Mode démo (soutenance) : on saute l'exploration, pas de dégâts, bouton « Salle suivante ».</summary>
+        public bool DemoMode { get; private set; }
+        /// <summary>Vrai juste après « Jouer » : la salle 1 joue la cinématique d'introduction.</summary>
+        public bool PlayIntro { get; set; }
+        /// <summary>Multiplicateur de vitesse des pièges, ennemis et rocher.</summary>
+        public float HazardSpeed => HardMode ? 1.4f : 1f;
+
+        /// <summary>Nombre total de reliques ramassées depuis toujours (débloque les costumes).</summary>
+        public int TotalRelicsEver => PlayerPrefs.GetInt("LT_TotalRelics", 0);
+        /// <summary>Pages du journal débloquées (une par salle terminée).</summary>
+        public int JournalPages => PlayerPrefs.GetInt("LT_Journal", 0);
+
+        public float BestTime(int room) => PlayerPrefs.GetFloat("LT_Best" + room, 0f);
+
+        /// <summary>Enregistre le temps d'une salle ; renvoie vrai si c'est un nouveau record.</summary>
+        public bool SubmitTime(int room, float seconds)
+        {
+            PlayerPrefs.SetInt("LT_Journal", Mathf.Max(JournalPages, room + 1));
+            if (DemoMode) return false;
+            float best = BestTime(room);
+            bool record = best <= 0f || seconds < best;
+            if (record) PlayerPrefs.SetFloat("LT_Best" + room, seconds);
+            PlayerPrefs.Save();
+            return record;
+        }
 
         // Vies : chaque relique ramassée donne une vie, chaque piège en retire une.
         public const int StartLives = 3;
         public const int MaxLives = 9;
         public int Lives { get; private set; } = StartLives;
+        public int StartLivesNow => HardMode ? 1 : StartLives;
 
         public void AddRelic()
         {
             Relics++;
             Lives = Mathf.Min(MaxLives, Lives + 1);
+            PlayerPrefs.SetInt("LT_TotalRelics", TotalRelicsEver + 1);
         }
 
         /// <summary>Retire une vie. Renvoie false s'il n'en reste plus (la salle recommence).</summary>
@@ -63,10 +96,10 @@ namespace LostTemple
         }
 
         /// <summary>Après une salle perdue, on repart avec les vies de départ.</summary>
-        public void RefillLives() => Lives = StartLives;
+        public void RefillLives() => Lives = StartLivesNow;
 
         /// <summary>1 à 3 étoiles : +1 en finissant avec au moins 5 vies, +1 avec 3 indices ou moins.</summary>
-        public int Stars => 1 + (Lives >= 5 ? 1 : 0) + (Hints <= 3 ? 1 : 0);
+        public int Stars => Mathf.Min(3, 1 + (Lives >= 5 || (HardMode && Lives >= 1) ? 1 : 0) + (Hints <= 3 ? 1 : 0));
 
         public event Action<GameState> StateChanged;
         public event Action<int> RoomLoaded;
@@ -81,6 +114,7 @@ namespace LostTemple
             go.AddComponent<AudioManager>();
             go.AddComponent<GameManager>();
             go.AddComponent<UIManager>();
+            go.AddComponent<AmbientLightSync>();
         }
 
         void Awake()
@@ -100,6 +134,7 @@ namespace LostTemple
             Time.timeScale = 1f;
             SetState(idx >= 0 ? GameState.Playing : GameState.Menu);
             if (idx >= 0) RoomLoaded?.Invoke(idx);
+            AudioManager.Instance.SetRoomMusic(idx);
         }
 
         void SetState(GameState s)
@@ -110,16 +145,35 @@ namespace LostTemple
 
         // ------------------------------------------------------------------ Navigation
 
-        public void NewGame()
+        public void NewGame() => NewGame(false);
+
+        public void NewGame(bool hard)
         {
+            HardMode = hard;
+            DemoMode = false;
+            PlayIntro = true;
             ResetStats();
             PlayerPrefs.SetInt("LT_Room", 0);
             PlayerPrefs.Save();
             LoadRoom(0);
         }
 
+        /// <summary>Mode démo pour la soutenance : enchaîne le meilleur moment de chaque capteur.</summary>
+        public void StartDemo()
+        {
+            HardMode = false;
+            DemoMode = true;
+            PlayIntro = false;
+            ResetStats();
+            Lives = MaxLives;
+            LoadRoom(0);
+        }
+
         public void ContinueGame()
         {
+            HardMode = false;
+            DemoMode = false;
+            PlayIntro = false;
             ResetStats();
             LoadRoom(Mathf.Clamp(UnlockedRoom, 0, RoomScenes.Length - 1));
         }
@@ -130,7 +184,9 @@ namespace LostTemple
             Hints = 0;
             Falls = 0;
             Relics = 0;
-            Lives = StartLives;
+            Secrets = 0;
+            Lives = StartLivesNow;
+            SensorStats.Reset();
         }
 
         public void LoadRoom(int index)

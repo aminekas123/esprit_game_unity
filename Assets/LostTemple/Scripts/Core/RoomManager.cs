@@ -24,6 +24,8 @@ namespace LostTemple
         public ExitTrigger exit;
         [Tooltip("Étincelles jouées à chaque réussite (optionnel).")]
         public ParticleSystem sparks;
+        [Tooltip("Rocher qui poursuit l'explorateur une fois la salle terminée (optionnel).")]
+        public Boulder boulder;
         public float hintDelay = 25f;
 
         int stepIndex = -1;
@@ -31,6 +33,7 @@ namespace LostTemple
         bool roomDone;
         float lastProgressTime;
         bool hintShown;
+        float roomStart;
 
         public int RelicsTotal { get; private set; }
         public int RelicsFound { get; private set; }
@@ -45,18 +48,19 @@ namespace LostTemple
         IEnumerator Start()
         {
             if (exit != null) exit.gameObject.SetActive(false);
-            RelicsTotal = FindObjectsByType<Relic>(FindObjectsSortMode.None).Length;
+            RelicsTotal = FindObjectsByType<Relic>().Length;
             foreach (var s in steps) { s.Completed += OnStepCompleted; s.Progressed += OnProgress; }
             foreach (var st in stations) if (st != null) st.SetMarker(false);
             yield return null;
             UIManager.Instance.ShowRoomTitle(GameManager.RoomTitles[roomIndex]);
             yield return new WaitForSeconds(1f);
+            roomStart = Time.time;
             AdvanceStep();
         }
 
         void Update()
         {
-            if (hintShown || roomDone) return;
+            if (hintShown || roomDone || GameManager.Instance.HardMode) return;
             if (Time.time - lastProgressTime < hintDelay) return;
             hintShown = true;
             var step = ActiveStep;
@@ -124,6 +128,12 @@ namespace LostTemple
             UIManager.Instance.SetStep(null);
             if (stepIndex >= steps.Length) { StartCoroutine(FinishRoom()); return; }
             var st = StationFor(stepIndex);
+            if (st != null && GameManager.Instance.DemoMode && PlayerController.Instance != null)
+            {
+                // Démo : on saute l'exploration et on se place directement sur l'énigme.
+                var p = PlayerController.Instance;
+                p.Teleport(st.transform.position + Vector3.up * 0.05f, p.transform.rotation);
+            }
             if (st != null) st.SetMarker(true);
             else StartStep(); // pas de station : l'énigme démarre directement
         }
@@ -223,8 +233,22 @@ namespace LostTemple
             }
             if (door != null) Burst(door.position + Vector3.up * 3f, 60);
             if (exit != null) exit.gameObject.SetActive(true);
+
+            var gm = GameManager.Instance;
+            float time = Time.time - roomStart;
+            bool record = gm.SubmitTime(roomIndex, time);
+            string clock = $"{(int)time / 60}:{(int)time % 60:00}";
+            UIManager.Instance.ShowRoomTitle((IsLastRoom ? "La dernière porte est ouverte !" : "Salle terminée !") + $"\n<size=50>{clock}{(record ? "  ★ Nouveau record !" : "")}</size>");
+
+            if (!gm.DemoMode && roomIndex < Journal.Pages.Length)
+            {
+                yield return new WaitForSeconds(1.5f);
+                bool closed = false;
+                UIManager.Instance.ShowMessage($"Journal de l'explorateur — page {roomIndex + 1}", Journal.Pages[roomIndex], "Continuer", () => closed = true);
+                while (!closed) yield return null;
+            }
             if (p != null) p.Frozen = false;
-            UIManager.Instance.ShowRoomTitle(IsLastRoom ? "La dernière porte est ouverte !" : "Salle terminée !");
+            if (boulder != null) boulder.StartChase();
         }
 
         public void OnExitReached()

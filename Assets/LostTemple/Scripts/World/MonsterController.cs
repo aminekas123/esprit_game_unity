@@ -23,6 +23,8 @@ namespace LostTemple
         Quaternion headBase, jawBase, armLBase, armRBase;
         float rise;   // 0 = recroquevillé, 1 = debout
         float roar;   // ouverture de la mâchoire
+        float stun;   // 0..1 : ébloui, tête basse
+        float slamL, slamR; // bras levé (0..1) pour une attaque
 
         void Start()
         {
@@ -46,6 +48,30 @@ namespace LostTemple
             if (State != MonsterState.Sleeping) return;
             StartCoroutine(WakeUp());
         }
+
+        /// <summary>Ébloui par la lumière : yeux éteints, tête basse.</summary>
+        public void SetStun(float v) => stun = Mathf.Clamp01(v);
+
+        /// <summary>Lève le bras du côté donné (-1 gauche, +1 droite, vu par le joueur) puis frappe le sol.</summary>
+        public IEnumerator Slam(int side, float windup)
+        {
+            for (float t = 0; t < 1f; t += Time.deltaTime / windup)
+            {
+                if (side < 0) slamL = t; else slamR = t;
+                yield return null;
+            }
+            AudioManager.Instance.Play(Sfx.Mechanism, 0.9f);
+            CameraRig.Shake(0.35f);
+            for (float t = 1f; t > 0f; t -= Time.deltaTime / 0.25f)
+            {
+                if (side < 0) slamL = -t * 0.6f; else slamR = -t * 0.6f;
+                yield return null;
+            }
+            slamL = slamR = 0f;
+        }
+
+        /// <summary>Rugissement à la demande (boss).</summary>
+        public void RoarNow() { StartCoroutine(Roar()); }
 
         public void Die()
         {
@@ -109,7 +135,7 @@ namespace LostTemple
             body.localPosition = bodyBase + Vector3.down * (1f - rise) * 0.9f + Vector3.up * breathe * 0.03f + Vector3.right * stir;
             body.localRotation = Quaternion.Euler(Mathf.Lerp(35f, 8f, rise) + push01 * 12f, Mathf.Sin(t * 0.7f) * 4f * rise, 0f);
 
-            float lookUp = State == MonsterState.Sleeping ? 30f : -5f - roar * 20f;
+            float lookUp = State == MonsterState.Sleeping ? 30f : -5f - roar * 20f + stun * 40f;
             head.localRotation = headBase * Quaternion.Euler(lookUp + Mathf.Sin(t * 1.3f) * 3f, Mathf.Sin(t * 0.9f) * 8f * rise, 0f);
 
             // Mâchoire : rugissement, claquements quand il pousse
@@ -119,10 +145,11 @@ namespace LostTemple
             // Bras : pendants quand il dort, tendus vers l'avant quand il repousse la boule
             float reach = rise * (0.25f + push01 * 0.75f);
             float swing = Mathf.Sin(t * 2f) * 10f * rise;
-            armL.localRotation = armLBase * Quaternion.Euler(-reach * 70f + swing, 0f, 0f);
-            armR.localRotation = armRBase * Quaternion.Euler(-reach * 70f - swing, 0f, 0f);
+            // Le monstre est tourné de 180° : son bras gauche est à droite du joueur.
+            armL.localRotation = armLBase * Quaternion.Euler(-reach * 70f + swing - Mathf.Max(0f, slamR) * 160f + Mathf.Min(0f, slamR) * -60f, 0f, 0f);
+            armR.localRotation = armRBase * Quaternion.Euler(-reach * 70f - swing - Mathf.Max(0f, slamL) * 160f + Mathf.Min(0f, slamL) * -60f, 0f, 0f);
 
-            float eye = State == MonsterState.Sleeping ? 0.05f + wake01 * 2.5f : 3f + Mathf.Sin(t * 5f) * 0.8f + push01 * 2f;
+            float eye = State == MonsterState.Sleeping ? 0.05f + wake01 * 2.5f : (3f + Mathf.Sin(t * 5f) * 0.8f + push01 * 2f) * (1f - stun * 0.9f);
             SetEyes(eye);
         }
 

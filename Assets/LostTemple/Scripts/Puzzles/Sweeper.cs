@@ -18,7 +18,8 @@ namespace LostTemple
 
         void FixedUpdate()
         {
-            rb.MoveRotation(rb.rotation * Quaternion.Euler(0f, speed * Time.fixedDeltaTime, 0f));
+            float k = GameManager.Instance != null ? GameManager.Instance.HazardSpeed : 1f;
+            rb.MoveRotation(rb.rotation * Quaternion.Euler(0f, speed * k * Time.fixedDeltaTime, 0f));
         }
     }
 }

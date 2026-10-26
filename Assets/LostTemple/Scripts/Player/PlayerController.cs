@@ -24,6 +24,9 @@ namespace LostTemple
         /// <summary>Vitesse normalisée 0..1, lue par l'animation.</summary>
         public float Speed01 { get; private set; }
         public bool IsHurt => hurtTimer > 0f;
+        /// <summary>Invisible aux gardiens tant que le capteur de proximité est couvert (énergie limitée).</summary>
+        public bool IsCloaked { get; private set; }
+        public float CloakEnergy { get; private set; } = 1f;
 
         CharacterController cc;
         float vy;
@@ -66,6 +69,14 @@ namespace LostTemple
             Speed01 = Mathf.Lerp(Speed01, move.magnitude / speed, 1f - Mathf.Exp(-12f * dt));
 
             if (transform.position.y < killY) Hurt("Vous êtes tombé dans le vide !");
+
+            // Invisibilité : seulement dans les salles gardées, 3 s maximum, se recharge en 4 s
+            bool want = Enemy.Count > 0 && !Frozen && SensorManager.Instance.IsCovered();
+            if (want && CloakEnergy > 0f) CloakEnergy = Mathf.Max(0f, CloakEnergy - dt / 3f);
+            else if (!want) CloakEnergy = Mathf.Min(1f, CloakEnergy + dt / 4f);
+            bool cloaked = want && CloakEnergy > 0f;
+            if (cloaked && !IsCloaked) AudioManager.Instance.Play(Sfx.Tick, 0.6f);
+            IsCloaked = cloaked;
         }
 
         static Vector2 KeyboardInput()
@@ -89,6 +100,14 @@ namespace LostTemple
             if (hurtTimer > 0f || Frozen) return;
             hurtTimer = 1.2f;
             var gm = GameManager.Instance;
+            if (gm.DemoMode)
+            {
+                // En démo, pas de vie perdue : simple retour au point de passage.
+                UIManager.Instance.FlashDamage();
+                UIManager.Instance.ShowToast(message);
+                Teleport(checkpoint, checkpointRot);
+                return;
+            }
             gm.AddFall();
             AudioManager.Instance.Play(Sfx.Fail);
             UIManager.Instance.FlashDamage();
@@ -97,12 +116,18 @@ namespace LostTemple
             {
                 // Plus de vies : la salle recommence avec les vies de départ.
                 Frozen = true;
-                UIManager.Instance.ShowMessage("Plus de vies !", message + "\n\nVous n'avez plus de reliques. La salle recommence avec " + GameManager.StartLives + " vies.",
+                UIManager.Instance.ShowMessage("Plus de vies !", message + "\n\nVous n'avez plus de reliques. La salle recommence avec " + gm.StartLivesNow + " vie(s).",
                     "Recommencer", () => { gm.RefillLives(); gm.RestartRoom(); });
                 return;
             }
             UIManager.Instance.ShowToast(message + $"  (−1 vie, reste {gm.Lives})");
             Teleport(checkpoint, checkpointRot);
+        }
+
+        /// <summary>Déplacement imposé (boss : esquive au téléphone) même quand le joueur est figé.</summary>
+        public void ForceMove(Vector3 delta)
+        {
+            if (cc.enabled) cc.Move(delta);
         }
 
         public void Teleport(Vector3 position, Quaternion rotation)

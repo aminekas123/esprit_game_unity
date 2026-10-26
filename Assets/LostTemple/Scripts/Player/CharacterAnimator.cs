@@ -40,7 +40,7 @@ namespace LostTemple
                 body.localPosition = bodyBase + Vector3.up * bob;
             }
 
-            bool visible = player == null || !player.IsHurt || Mathf.Repeat(Time.time * 10f, 1f) > 0.4f;
+            bool visible = player == null || ((!player.IsHurt || Mathf.Repeat(Time.time * 10f, 1f) > 0.4f) && (!player.IsCloaked || Mathf.Repeat(Time.time * 14f, 1f) > 0.85f));
             foreach (var r in renderers) if (!(r is ParticleSystemRenderer) && r.enabled != visible) r.enabled = visible;
         }
     }

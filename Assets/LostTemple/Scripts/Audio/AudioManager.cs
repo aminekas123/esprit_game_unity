@@ -15,12 +15,19 @@ namespace LostTemple
         public AudioClip ambientOverride;
         public AudioClip[] sfxOverrides = new AudioClip[9];
 
-        AudioSource ambient, sfx, loop;
+        AudioSource ambient, sfx, loop, drums;
         AudioClip[] clips;
         const int Rate = 44100;
 
         public float Volume { get; private set; } = 0.8f;
         public bool Haptics { get; private set; } = true;
+        /// <summary>Tension demandée par le jeu (boss, rocher…) : fait monter les percussions.</summary>
+        public float Tension { get; set; }
+
+        // Note de base du bourdon pour le menu (-1) puis chaque salle : chaque salle a sa propre couleur.
+        static readonly float[] roomRoots = { 55f, 55f, 49f, 58.27f, 43.65f, 51.91f, 46.25f, 41.2f };
+        int currentRoom = -2;
+        float drumVol, duck = 1f;
 
         void Awake()
         {
@@ -49,10 +56,45 @@ namespace LostTemple
             for (int i = 0; i < clips.Length && i < sfxOverrides.Length; i++)
                 if (sfxOverrides[i] != null) clips[i] = sfxOverrides[i];
 
-            ambient.clip = ambientOverride != null ? ambientOverride : Drone(8f);
+            ambient.clip = ambientOverride != null ? ambientOverride : Drone(8f, 55f);
             ambient.Play();
+            drums = gameObject.AddComponent<AudioSource>();
+            drums.loop = true; drums.volume = 0f; drums.clip = Drums(2f);
+            drums.Play();
             loop.clip = Rumble("loop", 2f);
             loop.Play();
+        }
+
+        /// <summary>Change la couleur de la musique selon la salle (-1 = menu).</summary>
+        public void SetRoomMusic(int room)
+        {
+            if (room == currentRoom || ambientOverride != null) return;
+            currentRoom = room;
+            ambient.clip = Drone(8f, roomRoots[Mathf.Clamp(room + 1, 0, roomRoots.Length - 1)]);
+            ambient.Play();
+            Tension = 0f;
+        }
+
+        void Update()
+        {
+            // Tension : boss/rocher, ou piège actif tout proche de l'explorateur
+            float t = Tension;
+            var p = PlayerController.Instance;
+            if (p != null)
+            {
+                float d = Hazard.NearestActiveDistance(p.transform.position);
+                if (d < 5f) t = Mathf.Max(t, Mathf.InverseLerp(5f, 1.5f, d) * 0.8f);
+                if (Boulder.Rolling) t = 1f;
+            }
+            drumVol = Mathf.Lerp(drumVol, t * 0.55f, 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime));
+            drums.pitch = 1f + t * 0.15f;
+
+            // Pendant que le micro écoute, la musique se fait discrète pour ne pas fausser la mesure.
+            var step = RoomManager.Current != null ? RoomManager.Current.ActiveStep : null;
+            bool micListening = QuietZone.Current != null || (step != null && step.IsActive && step.usesSensor && step.sensor == SensorKind.Microphone);
+            duck = Mathf.Lerp(duck, micListening ? 0.2f : 1f, 1f - Mathf.Exp(-4f * Time.unscaledDeltaTime));
+            ambient.volume = 0.35f * duck;
+            drums.volume = drumVol * duck;
         }
 
         public void SetVolume(float v)
@@ -149,10 +191,34 @@ namespace LostTemple
             return c;
         }
 
-        static AudioClip Drone(float len)
+        /// <summary>Boucle de percussions (grosse caisse + toms) à 120 BPM.</summary>
+        static AudioClip Drums(float len)
         {
             var data = new float[(int)(Rate * len)];
-            float[] f = { 55f, 82.5f, 110f, 165f };
+            float beat = 0.5f;
+            int[] pattern = { 1, 0, 2, 1, 1, 0, 2, 3 };   // sur des croches
+            for (int n = 0; n < pattern.Length; n++)
+            {
+                if (pattern[n] == 0) continue;
+                int start = (int)(n * beat * 0.5f * Rate);
+                float f0 = pattern[n] == 1 ? 60f : pattern[n] == 2 ? 110f : 150f;
+                for (int i = 0; i < Rate * 0.3f && start + i < data.Length; i++)
+                {
+                    float t = i / (float)Rate;
+                    float f = f0 * (1f + 1.5f * Mathf.Exp(-t * 30f));
+                    data[start + i] += Mathf.Sin(2f * Mathf.PI * f * t) * Mathf.Exp(-t * (pattern[n] == 1 ? 9f : 14f)) * 0.7f;
+                }
+            }
+            var c = AudioClip.Create("drums", data.Length, 1, Rate, false);
+            c.SetData(data, 0);
+            return c;
+        }
+
+        static AudioClip Drone(float len, float root)
+        {
+            var data = new float[(int)(Rate * len)];
+            // Fondamentale, quinte, octave, tierce mineure de l'octave (arrondies pour boucler sans clic sur 8 s)
+            float[] f = { Mathf.Round(root * len) / len, Mathf.Round(root * 1.5f * len) / len, Mathf.Round(root * 2f * len) / len, Mathf.Round(root * 2.4f * len) / len };
             for (int i = 0; i < data.Length; i++)
             {
                 float t = i / (float)Rate;

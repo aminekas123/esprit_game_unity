@@ -37,6 +37,15 @@ namespace LostTemple
         Slider sensSlider, micSlider, volSlider;
         Text altToggleText, hapticsToggleText;
         GameObject moveStick;
+        // Nouveaux éléments : barres (lanterne, bruit, invisibilité), bouton démo, histoire, journal, rapport capteurs, carte
+        Image lanternFill, noiseFill, cloakFill;
+        GameObject lanternBar, noiseBar, cloakBar, shakeButton, cloakButton, demoButton;
+        GameObject storyView, journalView, reportView;
+        Text storyText, journalText, journalPageText, reportText, costumeText, lightSyncText;
+        RectTransform mapRow;
+        Text secretsText;
+        int journalIndex;
+        bool storySkip;
         Text missionText;
         Image damageFlash;
         Coroutine flashRoutine;
@@ -57,6 +66,7 @@ namespace LostTemple
             BuildCodePad();
             BuildCameraView();
             BuildModal();
+            BuildExtras();
             BuildToast();
             HideAll();
             GameManager.Instance.StateChanged += OnStateChanged;
@@ -64,7 +74,7 @@ namespace LostTemple
 
         void HideAll(bool keepGameplayOverlays = false)
         {
-            foreach (var g in new[] { mainMenu, settings, diagnostic, hud, pause, victory }) g.SetActive(false);
+            foreach (var g in new[] { mainMenu, settings, diagnostic, hud, pause, victory, journalView, reportView }) g.SetActive(false);
             if (keepGameplayOverlays) return;
             // Tutoriel/message, clavier de symboles et indice restent visibles pendant une pause.
             modal.SetActive(false); codePad.SetActive(false); hintBox.SetActive(false); HideCamera();
@@ -88,6 +98,7 @@ namespace LostTemple
                 case GameState.Paused:
                     hud.SetActive(true);
                     pause.SetActive(true);
+                    RefreshMap();
                     pause.transform.SetAsLastSibling();
                     toastText.transform.SetAsLastSibling();
                     RefreshSettings();
@@ -112,7 +123,25 @@ namespace LostTemple
                 missionText.text = rm != null ? rm.MissionText.TrimEnd('\n') : "";
                 missionText.transform.parent.gameObject.SetActive(rm != null);
                 var pc = PlayerController.Instance;
-                moveStick.SetActive(step == null && pc != null && !pc.Frozen && !modal.activeSelf);
+                bool exploring = step == null && pc != null && !pc.Frozen && !modal.activeSelf;
+                moveStick.SetActive(exploring);
+                var lan = Lantern.Instance;
+                lanternBar.SetActive(lan != null && lan.Drains);
+                if (lan != null && lan.Drains)
+                {
+                    lanternFill.rectTransform.anchorMax = new Vector2(lan.Energy, 1f);
+                    lanternFill.color = Color.Lerp(new Color(0.9f, 0.3f, 0.1f), Gold, lan.Energy);
+                    shakeButton.SetActive(exploring && lan.Energy < 0.5f);
+                }
+                else shakeButton.SetActive(false);
+                var qz = QuietZone.Current;
+                noiseBar.SetActive(qz != null);
+                if (qz != null) noiseFill.rectTransform.anchorMax = new Vector2(qz.Noise01, 1f);
+                bool guarded = Enemy.Count > 0 && pc != null;
+                cloakBar.SetActive(guarded);
+                if (guarded) cloakFill.rectTransform.anchorMax = new Vector2(pc.CloakEnergy, 1f);
+                cloakButton.SetActive(guarded && exploring && SensorManager.Instance.UsesFallback(SensorKind.Proximity));
+                demoButton.SetActive(GameManager.Instance.DemoMode);
                 if (step == null && rm != null) objectiveText.text = rm.ExploreObjective;
             }
             if (hud.activeSelf && step != null)
@@ -194,7 +223,12 @@ namespace LostTemple
             prt.anchorMin = prt.anchorMax = new Vector2(1, 1); prt.pivot = new Vector2(1, 1);
             prt.sizeDelta = new Vector2(130, 130); prt.anchoredPosition = new Vector2(-30, -30);
 
-            var hintBtn = MakeButton(top.transform, "?", () => { if (step != null) ShowHint(step.hint); }, 130);
+            var hintBtn = MakeButton(top.transform, "?", () =>
+            {
+                if (GameManager.Instance.HardMode) { ShowToast("Pas d'indices en mode difficile !"); return; }
+                if (step != null) ShowHint(step.hint);
+                else ShowHint("Suivez le faisceau doré. Les reliques dorées donnent des vies ; un geste secret révèle une relique cachée dans chaque salle.");
+            }, 130);
             var hrt = (RectTransform)hintBtn.transform;
             hrt.anchorMin = hrt.anchorMax = new Vector2(1, 1); hrt.pivot = new Vector2(1, 1);
             hrt.sizeDelta = new Vector2(130, 130); hrt.anchoredPosition = new Vector2(-30, -165);
@@ -278,7 +312,9 @@ namespace LostTemple
             var spacer = Rect("Spacer", col); spacer.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
 
             continueButton = MakeButton(col, "Continuer", () => GameManager.Instance.ContinueGame(), 150).gameObject;
-            MakeButton(col, "Jouer", () => GameManager.Instance.NewGame(), 150, new Color(0.55f, 0.38f, 0.1f));
+            MakeButton(col, "Jouer", () => GameManager.Instance.NewGame(false), 150, new Color(0.55f, 0.38f, 0.1f));
+            MakeButton(col, "Mode difficile", () => GameManager.Instance.NewGame(true), 130, new Color(0.45f, 0.12f, 0.1f));
+            MakeButton(col, "Mode démo (soutenance)", () => GameManager.Instance.StartDemo(), 130);
             MakeButton(col, "Paramètres", () => OpenSettings(mainMenu), 150);
             MakeButton(col, "Commandes / Capteurs", () => { mainMenu.SetActive(false); diagnostic.SetActive(true); }, 150);
             MakeButton(col, "Quitter", () => GameManager.Instance.Quit(), 150);
@@ -304,6 +340,10 @@ namespace LostTemple
             var hap = MakeButton(parent, "", () => { AudioManager.Instance.SetHaptics(!AudioManager.Instance.Haptics); RefreshSettings(); });
             hapticsToggleText = hap.GetComponentInChildren<Text>();
             MakeButton(parent, "Recalibrer l'inclinaison (tenez le téléphone normalement)", () => { sm.CalibrateTilt(); ShowToast("Position neutre enregistrée"); }, 150);
+            var ls = MakeButton(parent, "", () => { AmbientLightSync.Enabled = !AmbientLightSync.Enabled; RefreshSettings(); });
+            lightSyncText = ls.GetComponentInChildren<Text>();
+            var cos = MakeButton(parent, "", () => { PlayerCostume.Next(); RefreshSettings(); });
+            costumeText = cos.GetComponentInChildren<Text>();
             RefreshSettings();
         }
 
@@ -312,6 +352,15 @@ namespace LostTemple
             var sm = SensorManager.Instance;
             altToggleText.text = "Commandes alternatives : " + (sm.ForceAlternative ? "<color=#F2B847>OUI</color>" : "NON");
             hapticsToggleText.text = "Vibrations : " + (AudioManager.Instance.Haptics ? "<color=#F2B847>OUI</color>" : "NON");
+            if (lightSyncText != null) lightSyncText.text = "Lumière réelle → ambiance du temple : " + (AmbientLightSync.Enabled ? "<color=#F2B847>OUI</color>" : "NON");
+            if (costumeText != null)
+            {
+                int unlocked = 0, total = GameManager.Instance.TotalRelicsEver;
+                foreach (var c in PlayerCostume.All) if (total >= c.unlock) unlocked++;
+                string next = "";
+                foreach (var c in PlayerCostume.All) if (total < c.unlock) { next = $"\n<size=30>Prochain : {c.name} à {c.unlock} reliques (vous en avez {total})</size>"; break; }
+                costumeText.text = $"Costume : <color=#F2B847>{PlayerCostume.All[PlayerCostume.Selected].name}</color> ({unlocked}/{PlayerCostume.All.Length}){next}";
+            }
             sensSlider.SetValueWithoutNotify(sm.Sensitivity);
             micSlider.SetValueWithoutNotify(sm.MicSensitivity);
             volSlider.SetValueWithoutNotify(AudioManager.Instance.Volume);
@@ -370,7 +419,14 @@ namespace LostTemple
             pause = FullScreen("Pause", new Color(0.02f, 0.03f, 0.08f, 0.85f));
             var card = Card(pause);
             Size(Label(card, "Pause", 70, TextAnchor.MiddleCenter, Gold), 110);
+            mapRow = Rect("Temple Map", card);
+            Size(mapRow, 170);
+            var mh = mapRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+            mh.spacing = 10; mh.childControlWidth = true; mh.childControlHeight = true; mh.childForceExpandWidth = true;
+            secretsText = Label(card, "", 36, TextAnchor.MiddleCenter, new Color(0.8f, 0.85f, 1f));
+            Size(secretsText, 60);
             MakeButton(card, "Reprendre", () => GameManager.Instance.Resume(), 140, new Color(0.55f, 0.38f, 0.1f));
+            MakeButton(card, "Journal de l'explorateur", () => OpenJournal(pause));
             MakeButton(card, "Recommencer la salle", () => GameManager.Instance.RestartRoom());
             MakeButton(card, "Paramètres", () => OpenSettings(pause));
             MakeButton(card, "Diagnostic capteurs", () => { pause.SetActive(false); diagnostic.SetActive(true); });
@@ -386,7 +442,9 @@ namespace LostTemple
             Size(t, 140);
             victoryText = Label(card, "", 44);
             Size(victoryText, 480);
-            MakeButton(card, "Rejouer", () => GameManager.Instance.NewGame(), 140, new Color(0.55f, 0.38f, 0.1f));
+            MakeButton(card, "Vos capteurs", () => { reportText.text = SensorStats.Report() + "\n" + RecordsText(); reportView.SetActive(true); reportView.transform.SetAsLastSibling(); }, 140, new Color(0.15f, 0.35f, 0.5f));
+            MakeButton(card, "Journal de l'explorateur", () => OpenJournal(null));
+            MakeButton(card, "Rejouer", () => GameManager.Instance.NewGame(false), 140, new Color(0.55f, 0.38f, 0.1f));
             MakeButton(card, "Menu principal", () => GameManager.Instance.GoToMenu());
         }
 
@@ -458,12 +516,15 @@ namespace LostTemple
             cameraShootButton = MakeButton(bottom, "Prendre la photo", TakePhoto, 170, new Color(0.55f, 0.38f, 0.1f)).gameObject;
             cameraFallbackRow = Rect("Fallback", bottom).gameObject;
             Size(cameraFallbackRow.transform as RectTransform, 150);
-            var hl = cameraFallbackRow.AddComponent<HorizontalLayoutGroup>();
-            hl.spacing = 14; hl.childControlWidth = true; hl.childControlHeight = true; hl.childForceExpandWidth = true;
+            Size(cameraFallbackRow.transform as RectTransform, 300);
+            var hl = cameraFallbackRow.AddComponent<GridLayoutGroup>();
+            hl.cellSize = new Vector2(235, 135); hl.spacing = new Vector2(12, 12);
+            hl.childAlignment = TextAnchor.MiddleCenter; hl.constraint = GridLayoutGroup.Constraint.FixedColumnCount; hl.constraintCount = 4;
             foreach (PhotoTarget t in Enum.GetValues(typeof(PhotoTarget)))
             {
                 var tt = t;
-                var b = MakeButton(cameraFallbackRow.transform, PhotoTarget.Bright == t ? "Clair" : PhotoPuzzle.Describe(t).Substring(0, 1) + PhotoPuzzle.Describe(t).Substring(1).ToLower(), () => SimulatedPhoto(tt), 150, PhotoPuzzle.Sample(t) * 0.8f);
+                string label = t == PhotoTarget.Bright ? "Clair" : t == PhotoTarget.Dark ? "Sombre" : t == PhotoTarget.Detailed ? "Motifs" : PhotoPuzzle.Describe(t).Substring(0, 1) + PhotoPuzzle.Describe(t).Substring(1).ToLower();
+                var b = MakeButton(cameraFallbackRow.transform, label, () => SimulatedPhoto(tt), 135, PhotoPuzzle.Sample(t) * 0.8f);
                 b.GetComponentInChildren<Text>().fontSize = 36;
             }
 
@@ -542,7 +603,8 @@ namespace LostTemple
         {
             var px = new Color32[64];
             Color c = PhotoPuzzle.Sample(t);
-            for (int i = 0; i < px.Length; i++) px[i] = c;
+            for (int i = 0; i < px.Length; i++)
+                px[i] = t == PhotoTarget.Detailed ? (((i + i / 8) & 1) == 0 ? Color.white : Color.black) : c;
             StartCoroutine(Shutter(px));
         }
 
@@ -790,5 +852,158 @@ namespace LostTemple
         }
 
         public void HideChoicePad() { codePad.SetActive(false); }
+
+        // ================================================================== Extras : barres, démo, histoire, journal, rapport
+
+        Image Bar(string label, Transform parent, float y, Color color, out GameObject go)
+        {
+            var bg = Panel(label, parent, new Color(0, 0, 0, 0.55f));
+            var rt = bg.rectTransform;
+            rt.anchorMin = new Vector2(0.55f, 1); rt.anchorMax = new Vector2(0.97f, 1); rt.pivot = new Vector2(1, 1);
+            rt.sizeDelta = new Vector2(0, 54); rt.anchoredPosition = new Vector2(0, y);
+            var fill = Panel("Fill", bg.transform, color);
+            fill.rectTransform.anchorMin = Vector2.zero; fill.rectTransform.anchorMax = Vector2.one;
+            fill.rectTransform.offsetMin = fill.rectTransform.offsetMax = Vector2.zero;
+            var t = Label(bg.transform, label, 32);
+            Stretch(t.rectTransform);
+            go = bg.gameObject;
+            return fill;
+        }
+
+        void BuildExtras()
+        {
+            lanternFill = Bar("Lanterne (secouez !)", hud.transform, -370f, Gold, out lanternBar);
+            noiseFill = Bar("Bruit — restez silencieux", hud.transform, -432f, new Color(0.9f, 0.25f, 0.15f), out noiseBar);
+            cloakFill = Bar("Invisibilité (couvrir le capteur)", hud.transform, -494f, new Color(0.45f, 0.75f, 1f), out cloakBar);
+
+            shakeButton = MakeButton(hud.transform, "Secouer la lanterne", () => SensorManager.Instance.FireShake(), 120, new Color(0.55f, 0.38f, 0.1f)).gameObject;
+            var sb = (RectTransform)shakeButton.transform;
+            sb.anchorMin = sb.anchorMax = new Vector2(1, 0); sb.pivot = new Vector2(1, 0);
+            sb.sizeDelta = new Vector2(380, 120); sb.anchoredPosition = new Vector2(-30, 520);
+
+            var hold = Hold(hud.transform, "Se cacher", v => SensorManager.Instance.FallbackCover = v);
+            cloakButton = hold.gameObject;
+            var cb = (RectTransform)cloakButton.transform;
+            cb.anchorMin = cb.anchorMax = new Vector2(1, 0); cb.pivot = new Vector2(1, 0);
+            cb.sizeDelta = new Vector2(300, 200); cb.anchoredPosition = new Vector2(-30, 120);
+
+            demoButton = MakeButton(hud.transform, "DÉMO — Salle suivante ▶", () => GameManager.Instance.NextRoom(), 110, new Color(0.15f, 0.35f, 0.5f)).gameObject;
+            var db = (RectTransform)demoButton.transform;
+            db.anchorMin = db.anchorMax = new Vector2(0.5f, 1); db.pivot = new Vector2(0.5f, 1);
+            db.sizeDelta = new Vector2(620, 110); db.anchoredPosition = new Vector2(0, -560);
+
+            // Cartes d'histoire (cinématique)
+            storyView = FullScreen("Story", new Color(0, 0, 0, 0.92f));
+            storyText = Label(storyView.transform, "", 60, TextAnchor.MiddleCenter, new Color(1f, 0.9f, 0.7f));
+            Stretch(storyText.rectTransform, 80, 300, 80, 300);
+            var skip = MakeButton(storyView.transform, "Passer ▶▶", () => storySkip = true, 110);
+            var srt = (RectTransform)skip.transform;
+            srt.anchorMin = srt.anchorMax = new Vector2(1, 0); srt.pivot = new Vector2(1, 0);
+            srt.sizeDelta = new Vector2(320, 110); srt.anchoredPosition = new Vector2(-40, 60);
+            storyView.SetActive(false);
+
+            // Journal
+            journalView = FullScreen("Journal", new Color(0.12f, 0.09f, 0.05f, 0.97f));
+            var jc = Card(journalView, 960);
+            jc.GetComponent<Image>().color = new Color(0.86f, 0.78f, 0.6f);
+            journalPageText = Label(jc, "", 50, TextAnchor.MiddleCenter, new Color(0.35f, 0.2f, 0.08f));
+            Size(journalPageText, 90);
+            journalText = Label(jc, "", 42, TextAnchor.UpperLeft, new Color(0.2f, 0.13f, 0.06f));
+            journalText.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            var nav = Rect("Nav", jc);
+            Size(nav, 120);
+            var nh = nav.gameObject.AddComponent<HorizontalLayoutGroup>();
+            nh.spacing = 20; nh.childControlWidth = true; nh.childControlHeight = true; nh.childForceExpandWidth = true;
+            MakeButton(nav, "◀", () => ShowJournalPage(journalIndex - 1), 120);
+            MakeButton(nav, "▶", () => ShowJournalPage(journalIndex + 1), 120);
+            MakeButton(jc, "Fermer", () => { journalView.SetActive(false); if (journalBack != null) journalBack.SetActive(true); });
+
+            // Rapport « Vos capteurs »
+            reportView = FullScreen("Sensor Report", Night);
+            var rc = Card(reportView, 1000);
+            var rt2 = Label(rc, "Vos capteurs", 70, TextAnchor.MiddleCenter, Gold);
+            rt2.fontStyle = FontStyle.Bold;
+            Size(rt2, 120);
+            reportText = Label(rc, "", 38, TextAnchor.UpperLeft);
+            reportText.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            MakeButton(rc, "Retour", () => reportView.SetActive(false));
+        }
+
+        GameObject journalBack;
+
+        void OpenJournal(GameObject from)
+        {
+            journalBack = from;
+            if (from != null) from.SetActive(false);
+            journalView.SetActive(true);
+            journalView.transform.SetAsLastSibling();
+            ShowJournalPage(Mathf.Max(0, GameManager.Instance.JournalPages - 1));
+        }
+
+        void ShowJournalPage(int i)
+        {
+            int unlocked = GameManager.Instance.JournalPages;
+            if (unlocked == 0)
+            {
+                journalPageText.text = "Journal de l'explorateur";
+                journalText.text = "Les pages s'écrivent à la fin de chaque salle…";
+                return;
+            }
+            journalIndex = Mathf.Clamp(i, 0, unlocked - 1);
+            journalPageText.text = $"Page {journalIndex + 1} / {unlocked}";
+            journalText.text = Journal.Pages[journalIndex];
+        }
+
+        /// <summary>Cartes d'histoire plein écran (cinématique d'intro). Le joueur peut passer.</summary>
+        public IEnumerator Story(string[] cards)
+        {
+            storySkip = false;
+            storyView.SetActive(true);
+            storyView.transform.SetAsLastSibling();
+            foreach (var card in cards)
+            {
+                storyText.text = card;
+                for (float t = 0; t < 3.2f && !storySkip; t += Time.unscaledDeltaTime)
+                {
+                    float a = Mathf.Clamp01(Mathf.Min(t * 2f, (3.2f - t) * 2f));
+                    storyText.color = new Color(1f, 0.9f, 0.7f, a);
+                    yield return null;
+                }
+                if (storySkip) break;
+            }
+            storyView.SetActive(false);
+        }
+
+        /// <summary>Carte du temple (pause) : salles terminées, salle actuelle, meilleurs temps.</summary>
+        void RefreshMap()
+        {
+            for (int i = mapRow.childCount - 1; i >= 0; i--) Destroy(mapRow.GetChild(i).gameObject);
+            var gm = GameManager.Instance;
+            string[] icons = { "Incl.", "Bous.", "Gyro", "Micro", "Prox.", "Lum.", "Cam." };
+            for (int i = 0; i < GameManager.RoomScenes.Length; i++)
+            {
+                bool done = i < gm.CurrentRoom || i < gm.JournalPages;
+                bool current = i == gm.CurrentRoom;
+                var cell = Panel("Room " + (i + 1), mapRow, current ? Gold : done ? new Color(0.25f, 0.55f, 0.3f) : new Color(0.2f, 0.22f, 0.3f));
+                float best = gm.BestTime(i);
+                var t = Label(cell.transform, $"<b>{i + 1}</b>\n<size=24>{icons[i]}</size>\n<size=22>{(best > 0 ? $"{(int)best / 60}:{(int)best % 60:00}" : "—")}</size>", 34, TextAnchor.MiddleCenter, current ? Color.black : TextColor);
+                Stretch(t.rectTransform);
+            }
+            secretsText.text = $"Vies : {gm.Lives}   ·   Reliques secrètes : {gm.Secrets}/7" + (gm.HardMode ? "   ·   <color=#F07060>Difficile</color>" : "");
+        }
+
+        string RecordsText()
+        {
+            var sb = new System.Text.StringBuilder("<color=#F2B847>Meilleurs temps</color>\n");
+            var gm = GameManager.Instance;
+            for (int i = 0; i < GameManager.RoomScenes.Length; i++)
+            {
+                float b = gm.BestTime(i);
+                sb.Append($"Salle {i + 1} : {(b > 0 ? $"{(int)b / 60}:{(int)b % 60:00}" : "—")}   ");
+                if (i == 3) sb.Append("\n");
+            }
+            sb.Append($"\n\nReliques secrètes trouvées : {gm.Secrets}/7");
+            return sb.ToString();
+        }
     }
 }
