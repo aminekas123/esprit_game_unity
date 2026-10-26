@@ -88,11 +88,20 @@ namespace LostTemple
         {
             if (hurtTimer > 0f || Frozen) return;
             hurtTimer = 1.2f;
-            GameManager.Instance.AddFall();
+            var gm = GameManager.Instance;
+            gm.AddFall();
             AudioManager.Instance.Play(Sfx.Fail);
             UIManager.Instance.FlashDamage();
-            UIManager.Instance.ShowToast(message);
             CameraRig.Shake(0.25f);
+            if (!gm.LoseLife())
+            {
+                // Plus de vies : la salle recommence avec les vies de départ.
+                Frozen = true;
+                UIManager.Instance.ShowMessage("Plus de vies !", message + "\n\nVous n'avez plus de reliques. La salle recommence avec " + GameManager.StartLives + " vies.",
+                    "Recommencer", () => { gm.RefillLives(); gm.RestartRoom(); });
+                return;
+            }
+            UIManager.Instance.ShowToast(message + $"  (−1 vie, reste {gm.Lives})");
             Teleport(checkpoint, checkpointRot);
         }
 

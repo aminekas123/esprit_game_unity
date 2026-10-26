@@ -7,7 +7,7 @@ using UnityEngine.Android;
 
 namespace LostTemple
 {
-    public enum SensorKind { Accelerometer, Gyroscope, Compass, Microphone, Proximity, Light }
+    public enum SensorKind { Accelerometer, Gyroscope, Compass, Microphone, Proximity, Light, Camera }
 
     /// <summary>
     /// Point d'accès unique aux capteurs : disponibilité, calibrage, lissage et valeurs de secours.
@@ -101,6 +101,7 @@ namespace LostTemple
                 case SensorKind.Microphone: return Microphone.devices.Length > 0 && !MicPermissionDenied;
                 case SensorKind.Proximity: return ProximitySensor.current != null;
                 case SensorKind.Light: return LightSensor.current != null;
+                case SensorKind.Camera: return WebCamTexture.devices.Length > 0;
             }
             return false;
         }
@@ -118,6 +119,7 @@ namespace LostTemple
                 case SensorKind.Microphone: return "Microphone";
                 case SensorKind.Proximity: return "Proximité";
                 case SensorKind.Light: return "Luminosité";
+                case SensorKind.Camera: return "Caméra";
             }
             return kind.ToString();
         }
@@ -356,6 +358,8 @@ namespace LostTemple
                     return ProximitySensor.current != null ? $"{ProximityDistance:0.0} cm {(IsCovered() ? "(couvert)" : "")}" : "—";
                 case SensorKind.Light:
                     return LightSensor.current != null ? $"{GetLux():0} lux" : "—";
+                case SensorKind.Camera:
+                    return WebCamTexture.devices.Length > 0 ? $"{WebCamTexture.devices.Length} caméra(s)" : "—";
             }
             return "";
         }

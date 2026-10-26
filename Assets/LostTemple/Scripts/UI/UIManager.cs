@@ -20,7 +20,7 @@ namespace LostTemple
         RectTransform root;
 
         // Écrans
-        GameObject mainMenu, settings, diagnostic, hud, pause, victory, modal, codePad, hintBox;
+        GameObject mainMenu, settings, diagnostic, hud, pause, victory, modal, codePad, hintBox, cameraView;
         Text objectiveText, sensorText, titleText, toastText, hintText, modalTitle, modalBody, victoryText;
         Button modalButton, modalAltButton;
         Text modalButtonText;
@@ -30,6 +30,8 @@ namespace LostTemple
         Text[] diagStatus, diagValue;
         Text[] codeSlots;
         Action<int> codeCallback;
+        Text codeTitle, livesText;
+        RectTransform codeSlotRow, codeGrid;
         GameObject continueButton;
         GameObject settingsBackTarget;
         Slider sensSlider, micSlider, volSlider;
@@ -53,6 +55,7 @@ namespace LostTemple
             BuildPause();
             BuildVictory();
             BuildCodePad();
+            BuildCameraView();
             BuildModal();
             BuildToast();
             HideAll();
@@ -64,7 +67,7 @@ namespace LostTemple
             foreach (var g in new[] { mainMenu, settings, diagnostic, hud, pause, victory }) g.SetActive(false);
             if (keepGameplayOverlays) return;
             // Tutoriel/message, clavier de symboles et indice restent visibles pendant une pause.
-            modal.SetActive(false); codePad.SetActive(false); hintBox.SetActive(false);
+            modal.SetActive(false); codePad.SetActive(false); hintBox.SetActive(false); HideCamera();
         }
 
         void OnStateChanged(GameState s)
@@ -93,7 +96,7 @@ namespace LostTemple
                     var gm = GameManager.Instance;
                     float t = Time.time - gm.RunStartTime;
                     string stars = "<color=#F2B847>" + new string('★', gm.Stars) + "</color><color=#555A70>" + new string('★', 3 - gm.Stars) + "</color>";
-                    victoryText.text = $"<size=110>{stars}</size>\n\nVous avez récupéré l'artefact et échappé au temple.\n\nTemps : {(int)t / 60} min {(int)t % 60:00} s\nReliques : {gm.Relics}/{GameManager.RelicsInGame}\nIndices utilisés : {gm.Hints}\nChutes et pièges : {gm.Falls}";
+                    victoryText.text = $"<size=110>{stars}</size>\n\nVous avez récupéré l'artefact et échappé au temple.\n\nTemps : {(int)t / 60} min {(int)t % 60:00} s\nVies restantes : {gm.Lives}\nReliques ramassées : {gm.Relics}\nIndices utilisés : {gm.Hints}\nPièges et chutes : {gm.Falls}";
                     victory.SetActive(true);
                     break;
             }
@@ -104,6 +107,7 @@ namespace LostTemple
             if (diagnostic.activeSelf) RefreshDiagnostic();
             if (hud.activeSelf)
             {
+                livesText.text = RoomManager.Current != null ? "◆ " + GameManager.Instance.Lives + " vies" : "";
                 var rm = RoomManager.Current;
                 missionText.text = rm != null ? rm.MissionText.TrimEnd('\n') : "";
                 missionText.transform.parent.gameObject.SetActive(rm != null);
@@ -179,6 +183,10 @@ namespace LostTemple
             objectiveText = Label(top.transform, "", 46, TextAnchor.UpperLeft);
             Stretch(objectiveText.rectTransform, 40, 90, 200, 30);
             sensorText = Label(top.transform, "", 36, TextAnchor.LowerLeft, Gold);
+            livesText = Label(top.transform, "", 46, TextAnchor.MiddleRight, new Color(1f, 0.82f, 0.4f));
+            var lrt = livesText.rectTransform;
+            lrt.anchorMin = lrt.anchorMax = new Vector2(1, 1); lrt.pivot = new Vector2(1, 1);
+            lrt.sizeDelta = new Vector2(260, 130); lrt.anchoredPosition = new Vector2(-180, -30);
             Stretch(sensorText.rectTransform, 40, 30, 200, 0);
 
             var pauseBtn = MakeButton(top.transform, "II", () => GameManager.Instance.Pause(), 130);
@@ -384,36 +392,181 @@ namespace LostTemple
 
         void BuildCodePad()
         {
-            codePad = Panel("CodePad", root, Night).gameObject;
+            codePad = Panel("ChoicePad", root, Night).gameObject;
             var rt = (RectTransform)codePad.transform;
             rt.anchorMin = new Vector2(0, 0); rt.anchorMax = new Vector2(1, 0); rt.pivot = new Vector2(0.5f, 0);
             rt.sizeDelta = new Vector2(0, 720);
             Column(codePad.transform, 20, 30);
-            Size(Label(codePad.transform, "Touchez les symboles dans l'ordre des salles", 42, TextAnchor.MiddleCenter, Gold), 70);
+            codeTitle = Label(codePad.transform, "", 42, TextAnchor.MiddleCenter, Gold);
+            Size(codeTitle, 70);
 
-            var slots = Rect("Slots", codePad.transform);
-            Size(slots, 110);
-            var h = slots.gameObject.AddComponent<HorizontalLayoutGroup>();
+            codeSlotRow = Rect("Slots", codePad.transform);
+            Size(codeSlotRow, 110);
+            var h = codeSlotRow.gameObject.AddComponent<HorizontalLayoutGroup>();
             h.spacing = 20; h.childForceExpandWidth = true; h.childControlWidth = true; h.childControlHeight = true;
-            codeSlots = new Text[4];
-            for (int i = 0; i < 4; i++)
-            {
-                var s = Panel("Slot", slots, new Color(0, 0, 0, 0.4f));
-                codeSlots[i] = Label(s.transform, "?", 40);
-                Stretch(codeSlots[i].rectTransform);
-            }
 
-            var grid = Rect("Grid", codePad.transform);
-            Size(grid, 420);
-            var g = grid.gameObject.AddComponent<GridLayoutGroup>();
+            codeGrid = Rect("Grid", codePad.transform);
+            Size(codeGrid, 420);
+            var g = codeGrid.gameObject.AddComponent<GridLayoutGroup>();
             g.cellSize = new Vector2(310, 190); g.spacing = new Vector2(20, 20);
             g.childAlignment = TextAnchor.MiddleCenter; g.constraint = GridLayoutGroup.Constraint.FixedColumnCount; g.constraintCount = 3;
-            for (int i = 0; i < GameManager.GlyphNames.Length; i++)
+        }
+
+        // ------------------------------------------------------------------ Caméra (photos du Coyote)
+
+        RawImage cameraImage;
+        AspectRatioFitter cameraAspect;
+        Text cameraInstruction;
+        GameObject cameraShootButton, cameraFallbackRow;
+        Image cameraFlash;
+        WebCamTexture webcam;
+        Action<Color32[]> cameraCallback;
+
+        void BuildCameraView()
+        {
+            cameraView = FullScreen("Camera", Color.black);
+            var viewport = Rect("Viewport", cameraView.transform);
+            Stretch(viewport);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            cameraImage = Rect("Feed", viewport).gameObject.AddComponent<RawImage>();
+            cameraImage.rectTransform.anchorMin = cameraImage.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            cameraAspect = cameraImage.gameObject.AddComponent<AspectRatioFitter>();
+            cameraAspect.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+
+            // Cadre de visée : seule la zone centrale est analysée
+            var frame = Rect("Frame", cameraView.transform);
+            frame.anchorMin = new Vector2(0.3f, 0.4f); frame.anchorMax = new Vector2(0.7f, 0.6f);
+            frame.offsetMin = frame.offsetMax = Vector2.zero;
+            foreach (var (amin, amax) in new[] { (new Vector2(0, 0), new Vector2(1, 0)), (new Vector2(0, 1), new Vector2(1, 1)), (new Vector2(0, 0), new Vector2(0, 1)), (new Vector2(1, 0), new Vector2(1, 1)) })
             {
-                int k = i;
-                var b = MakeButton(grid, GameManager.GlyphNames[i], () => codeCallback?.Invoke(k), 190);
-                b.GetComponentInChildren<Text>().color = GameManager.GlyphColors[i];
+                var line = Panel("Edge", frame, Gold);
+                line.rectTransform.anchorMin = amin; line.rectTransform.anchorMax = amax;
+                line.rectTransform.sizeDelta = new Vector2(8, 8);
+                line.raycastTarget = false;
             }
+
+            var top = Panel("Instruction", cameraView.transform, new Color(0, 0, 0, 0.6f));
+            top.rectTransform.anchorMin = new Vector2(0, 1); top.rectTransform.anchorMax = Vector2.one; top.rectTransform.pivot = new Vector2(0.5f, 1);
+            top.rectTransform.sizeDelta = new Vector2(0, 260);
+            cameraInstruction = Label(top.transform, "", 46);
+            Stretch(cameraInstruction.rectTransform, 30, 20, 30, 20);
+
+            var bottom = Rect("Bottom", cameraView.transform);
+            bottom.anchorMin = new Vector2(0, 0); bottom.anchorMax = new Vector2(1, 0); bottom.pivot = new Vector2(0.5f, 0);
+            bottom.sizeDelta = new Vector2(0, 520);
+            Column(bottom, 20, 40).childAlignment = TextAnchor.LowerCenter;
+            cameraShootButton = MakeButton(bottom, "Prendre la photo", TakePhoto, 170, new Color(0.55f, 0.38f, 0.1f)).gameObject;
+            cameraFallbackRow = Rect("Fallback", bottom).gameObject;
+            Size(cameraFallbackRow.transform as RectTransform, 150);
+            var hl = cameraFallbackRow.AddComponent<HorizontalLayoutGroup>();
+            hl.spacing = 14; hl.childControlWidth = true; hl.childControlHeight = true; hl.childForceExpandWidth = true;
+            foreach (PhotoTarget t in Enum.GetValues(typeof(PhotoTarget)))
+            {
+                var tt = t;
+                var b = MakeButton(cameraFallbackRow.transform, PhotoTarget.Bright == t ? "Clair" : PhotoPuzzle.Describe(t).Substring(0, 1) + PhotoPuzzle.Describe(t).Substring(1).ToLower(), () => SimulatedPhoto(tt), 150, PhotoPuzzle.Sample(t) * 0.8f);
+                b.GetComponentInChildren<Text>().fontSize = 36;
+            }
+
+            cameraFlash = Panel("Flash", cameraView.transform, new Color(1, 1, 1, 0));
+            Stretch(cameraFlash.rectTransform);
+            cameraFlash.raycastTarget = false;
+        }
+
+        /// <summary>
+        /// Ouvre l'appareil photo (caméra arrière du téléphone). Si la caméra est absente ou refusée,
+        /// des boutons de couleur simulent la photo (commande alternative).
+        /// </summary>
+        public void ShowCamera(string instruction, PhotoTarget target, Action<Color32[]> onShot)
+        {
+            cameraCallback = onShot;
+            cameraView.SetActive(true);
+            cameraView.transform.SetAsLastSibling();
+            bool fallback = SensorManager.Instance.UsesFallback(SensorKind.Camera);
+            cameraInstruction.text = instruction + (fallback ? "\n<size=34><color=#F2B847>Caméra indisponible : choisissez la couleur à « photographier ».</color></size>" : "\n<size=34>Visez l'objet dans le cadre doré.</size>");
+            cameraShootButton.SetActive(!fallback);
+            cameraFallbackRow.SetActive(fallback);
+            cameraImage.color = fallback ? new Color(0.1f, 0.1f, 0.15f) : Color.white;
+            if (!fallback) StartCoroutine(StartWebcam());
+        }
+
+        IEnumerator StartWebcam()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Camera))
+            {
+                UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.Camera);
+                for (float t = 0; t < 10f && !UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Camera); t += Time.unscaledDeltaTime)
+                    yield return null;
+                if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Camera))
+                {
+                    cameraShootButton.SetActive(false);
+                    cameraFallbackRow.SetActive(true);
+                    ShowToast("Caméra refusée : utilisez les boutons de couleur.");
+                    yield break;
+                }
+            }
+#endif
+            if (webcam == null)
+            {
+                string device = null;
+                foreach (var d in WebCamTexture.devices) if (!d.isFrontFacing) { device = d.name; break; }
+                if (device == null && WebCamTexture.devices.Length > 0) device = WebCamTexture.devices[0].name;
+                webcam = new WebCamTexture(device, 1280, 720, 30);
+            }
+            cameraImage.texture = webcam;
+            webcam.Play();
+            for (float t = 0; t < 3f && webcam.width < 32; t += Time.unscaledDeltaTime) yield return null;
+            while (cameraView.activeSelf && webcam != null && webcam.isPlaying)
+            {
+                cameraAspect.aspectRatio = webcam.height > 0 ? webcam.width / (float)webcam.height : 1.5f;
+                cameraImage.rectTransform.localEulerAngles = new Vector3(0, 0, -webcam.videoRotationAngle);
+                cameraImage.uvRect = webcam.videoVerticallyMirrored ? new Rect(0, 1, 1, -1) : new Rect(0, 0, 1, 1);
+                yield return null;
+            }
+        }
+
+        void TakePhoto()
+        {
+            if (webcam == null || !webcam.isPlaying || webcam.width < 32) { ShowToast("La caméra démarre…"); return; }
+            var all = webcam.GetPixels32();
+            int w = webcam.width, h = webcam.height;
+            // Zone centrale (40 % × 40 %), un pixel sur 4 : la photo n'est ni enregistrée ni envoyée.
+            var list = new System.Collections.Generic.List<Color32>();
+            for (int y = (int)(h * 0.3f); y < h * 0.7f; y += 4)
+                for (int x = (int)(w * 0.3f); x < w * 0.7f; x += 4)
+                    list.Add(all[y * w + x]);
+            StartCoroutine(Shutter(list.ToArray()));
+        }
+
+        void SimulatedPhoto(PhotoTarget t)
+        {
+            var px = new Color32[64];
+            Color c = PhotoPuzzle.Sample(t);
+            for (int i = 0; i < px.Length; i++) px[i] = c;
+            StartCoroutine(Shutter(px));
+        }
+
+        IEnumerator Shutter(Color32[] pixels)
+        {
+            AudioManager.Instance.Play(Sfx.Shutter);
+            if (webcam != null && webcam.isPlaying) webcam.Pause();
+            for (float t = 0; t < 0.35f; t += Time.unscaledDeltaTime)
+            {
+                cameraFlash.color = new Color(1, 1, 1, 1f - t / 0.35f);
+                yield return null;
+            }
+            cameraFlash.color = Color.clear;
+            yield return new WaitForSecondsRealtime(0.3f);
+            HideCamera();
+            var cb = cameraCallback;
+            cameraCallback = null;
+            cb?.Invoke(pixels);
+        }
+
+        public void HideCamera()
+        {
+            if (webcam != null) webcam.Stop();
+            if (cameraView != null) cameraView.SetActive(false);
         }
 
         void BuildModal()
@@ -603,23 +756,39 @@ namespace LostTemple
             h2.anchorMin = new Vector2(0.52f, 0.2f); h2.anchorMax = new Vector2(0.95f, 0.8f); h2.offsetMin = h2.offsetMax = Vector2.zero;
         }
 
-        public void ShowCodePad(Action<int> onPick)
+        /// <summary>Clavier de choix (syllabes, symboles…) : le joueur touche les bonnes cases dans l'ordre.</summary>
+        public void ShowChoicePad(string title, string[] labels, int slots, Action<int> onPick)
         {
             codeCallback = onPick;
-            UpdateCodePad(0);
+            codeTitle.text = title;
+            for (int i = codeSlotRow.childCount - 1; i >= 0; i--) Destroy(codeSlotRow.GetChild(i).gameObject);
+            for (int i = codeGrid.childCount - 1; i >= 0; i--) Destroy(codeGrid.GetChild(i).gameObject);
+            codeSlots = new Text[slots];
+            for (int i = 0; i < slots; i++)
+            {
+                var s = Panel("Slot", codeSlotRow, new Color(0, 0, 0, 0.4f));
+                codeSlots[i] = Label(s.transform, "?", 48);
+                Stretch(codeSlots[i].rectTransform);
+            }
+            for (int i = 0; i < labels.Length; i++)
+            {
+                int k = i;
+                var b = MakeButton(codeGrid, labels[i], () => codeCallback?.Invoke(k), 190);
+                b.GetComponentInChildren<Text>().fontSize = 64;
+            }
             codePad.SetActive(true);
+            codePad.transform.SetAsLastSibling();
         }
 
-        public void UpdateCodePad(int entered)
+        public void UpdateChoicePad(string[] answer, int entered)
         {
-            var code = GameManager.Instance.Code;
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < codeSlots.Length; i++)
             {
-                codeSlots[i].text = i < entered ? GameManager.GlyphNames[code[i]] : "?";
-                codeSlots[i].color = i < entered ? GameManager.GlyphColors[code[i]] : TextColor;
+                codeSlots[i].text = i < entered ? answer[i] : "?";
+                codeSlots[i].color = i < entered ? Gold : TextColor;
             }
         }
 
-        public void HideCodePad() { codePad.SetActive(false); }
+        public void HideChoicePad() { codePad.SetActive(false); }
     }
 }

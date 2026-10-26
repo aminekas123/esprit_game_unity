@@ -15,8 +15,14 @@ namespace LostTemple
         public static GameManager Instance { get; private set; }
 
         public const string MenuScene = "MainMenu";
-        public static readonly string[] RoomScenes = { "Room1_Entree", "Room2_Labyrinthe", "Room3_Gardien", "Room4_Artefact" };
-        public static readonly string[] RoomTitles = { "Salle 1 — L'entrée", "Salle 2 — Le labyrinthe", "Salle 3 — Le gardien", "Salle finale — L'artefact" };
+        /// <summary>Une salle par capteur, puis la salle du Coyote (caméra).</summary>
+        public static readonly string[] RoomScenes =
+            { "Room1_Entree", "Room2_Boussole", "Room3_Statues", "Room4_Monstre", "Room5_Runes", "Room6_Lumiere", "Room7_Coyote" };
+        public static readonly string[] RoomTitles =
+        {
+            "Salle 1 — Le pont suspendu", "Salle 2 — Le labyrinthe", "Salle 3 — Les statues", "Salle 4 — Le monstre",
+            "Salle 5 — La cachette", "Salle 6 — Le pont invisible", "Salle finale — L'esprit Coyote"
+        };
 
         /// <summary>Les six symboles du temple : nom affiché et couleur.</summary>
         public static readonly string[] GlyphNames = { "Soleil", "Lune", "Serpent", "Œil", "Étoile", "Plume" };
@@ -28,8 +34,6 @@ namespace LostTemple
 
         public GameState State { get; private set; } = GameState.Menu;
         public int CurrentRoom { get; private set; } = -1;
-        /// <summary>Code de 4 symboles tiré au début de la partie ; chaque salle en révèle un.</summary>
-        public int[] Code { get; private set; } = new int[4];
         public int UnlockedRoom => PlayerPrefs.GetInt("LT_Room", 0);
 
         // Statistiques de la partie en cours (affichées sur l'écran de victoire)
@@ -37,13 +41,32 @@ namespace LostTemple
         public int Hints { get; private set; }
         public int Falls { get; private set; }
         public int Relics { get; private set; }
-        public const int RelicsInGame = 12;
-        public void AddRelic() => Relics++;
         public void AddHint() => Hints++;
         public void AddFall() => Falls++;
 
-        /// <summary>1 à 3 étoiles : +1 avec au moins 8 reliques sur 12, +1 avec peu d'indices et de chutes.</summary>
-        public int Stars => 1 + (Relics >= RelicsInGame * 2 / 3 ? 1 : 0) + (Hints <= 3 && Falls <= 6 ? 1 : 0);
+        // Vies : chaque relique ramassée donne une vie, chaque piège en retire une.
+        public const int StartLives = 3;
+        public const int MaxLives = 9;
+        public int Lives { get; private set; } = StartLives;
+
+        public void AddRelic()
+        {
+            Relics++;
+            Lives = Mathf.Min(MaxLives, Lives + 1);
+        }
+
+        /// <summary>Retire une vie. Renvoie false s'il n'en reste plus (la salle recommence).</summary>
+        public bool LoseLife()
+        {
+            Lives = Mathf.Max(0, Lives - 1);
+            return Lives > 0;
+        }
+
+        /// <summary>Après une salle perdue, on repart avec les vies de départ.</summary>
+        public void RefillLives() => Lives = StartLives;
+
+        /// <summary>1 à 3 étoiles : +1 en finissant avec au moins 5 vies, +1 avec 3 indices ou moins.</summary>
+        public int Stars => 1 + (Lives >= 5 ? 1 : 0) + (Hints <= 3 ? 1 : 0);
 
         public event Action<GameState> StateChanged;
         public event Action<int> RoomLoaded;
@@ -65,7 +88,6 @@ namespace LostTemple
             Instance = this;
             Application.targetFrameRate = 60;
             Screen.sleepTimeout = SleepTimeout.NeverSleep;
-            LoadCode();
             SceneManager.sceneLoaded += OnSceneLoaded;
         }
 
@@ -86,34 +108,10 @@ namespace LostTemple
             StateChanged?.Invoke(s);
         }
 
-        // ------------------------------------------------------------------ Code des symboles
-
-        void LoadCode()
-        {
-            string saved = PlayerPrefs.GetString("LT_Code", "");
-            if (saved.Length == 4) { for (int i = 0; i < 4; i++) Code[i] = saved[i] - '0'; }
-            else NewCode();
-        }
-
-        void NewCode()
-        {
-            var pool = new System.Collections.Generic.List<int> { 0, 1, 2, 3, 4, 5 };
-            string s = "";
-            for (int i = 0; i < 4; i++)
-            {
-                int k = UnityEngine.Random.Range(0, pool.Count);
-                Code[i] = pool[k];
-                pool.RemoveAt(k);
-                s += Code[i];
-            }
-            PlayerPrefs.SetString("LT_Code", s);
-        }
-
         // ------------------------------------------------------------------ Navigation
 
         public void NewGame()
         {
-            NewCode();
             ResetStats();
             PlayerPrefs.SetInt("LT_Room", 0);
             PlayerPrefs.Save();
@@ -132,6 +130,7 @@ namespace LostTemple
             Hints = 0;
             Falls = 0;
             Relics = 0;
+            Lives = StartLives;
         }
 
         public void LoadRoom(int index)
@@ -146,7 +145,7 @@ namespace LostTemple
         public void NextRoom()
         {
             int next = CurrentRoom + 1;
-            if (next >= RoomScenes.Length) return;
+            if (next >= RoomScenes.Length) { Victory(); return; }
             PlayerPrefs.SetInt("LT_Room", Mathf.Max(UnlockedRoom, next));
             PlayerPrefs.Save();
             LoadRoom(next);

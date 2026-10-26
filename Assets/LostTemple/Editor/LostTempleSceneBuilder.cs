@@ -10,7 +10,7 @@ using UnityEngine.SceneManagement;
 namespace LostTemple.EditorTools
 {
     /// <summary>
-    /// Génère les 5 scènes (menu + 4 salles) : décor texturé, explorateur jouable, pièges, reliques,
+    /// Génère les 8 scènes (menu + 7 salles, une par capteur) : décor texturé, explorateur jouable, pièges, reliques,
     /// stations d'énigmes et toutes les références déjà branchées. Menu : Lost Temple > Générer toutes les scènes.
     /// Les graphistes peuvent ensuite remplacer les formes simples par de vrais modèles.
     /// Attention : regénérer écrase les scènes existantes.
@@ -50,12 +50,15 @@ namespace LostTemple.EditorTools
                 Save(BuildRoom2(), GameManager.RoomScenes[1]),
                 Save(BuildRoom3(), GameManager.RoomScenes[2]),
                 Save(BuildRoom4(), GameManager.RoomScenes[3]),
+                Save(BuildRoom5(), GameManager.RoomScenes[4]),
+                Save(BuildRoom6(), GameManager.RoomScenes[5]),
+                Save(BuildRoom7(), GameManager.RoomScenes[6]),
             };
             EditorBuildSettings.scenes = scenes.ToArray();
             ConfigurePlayer();
             AssetDatabase.SaveAssets();
             EditorSceneManager.OpenScene($"{SceneDir}/{GameManager.MenuScene}.unity");
-            Debug.Log("[Lost Temple] 5 scènes générées et ajoutées aux Build Settings.");
+            Debug.Log("[Lost Temple] 8 scènes générées et ajoutées aux Build Settings.");
         }
 
         static void ConfigurePlayer()
@@ -188,6 +191,12 @@ namespace LostTemple.EditorTools
                 m.SetTexture("_BumpMap", tex.Value.normal);
                 m.SetFloat("_BumpScale", 1f);
                 m.EnableKeyword("_NORMALMAP");
+            }
+            else
+            {
+                m.SetTexture("_BaseMap", null);
+                m.SetTexture("_BumpMap", null);
+                m.DisableKeyword("_NORMALMAP");
             }
             if (glow)
             {
@@ -734,24 +743,90 @@ namespace LostTemple.EditorTools
             }
         }
 
-        static Transform Door(Transform root, Vector3 pos, out TextMesh symbolText, out Renderer plate)
+        /// <summary>Porte de pierre avec cadre, serrure et effets d'ouverture (poussière, gravats, lumière derrière).</summary>
+        static (Transform door, DoorFX fx) Door(Transform root, Vector3 pos)
         {
             Box("Door Frame Top", root, pos + new Vector3(0, 1.75f, 0.05f), new Vector3(3f, 0.45f, 0.9f), Carved);
             Box("Door Frame L", root, pos + new Vector3(-1.3f, 0f, 0.05f), new Vector3(0.4f, 3.1f, 0.9f), Carved);
             Box("Door Frame R", root, pos + new Vector3(1.3f, 0f, 0.05f), new Vector3(0.4f, 3.1f, 0.9f), Carved);
+            Box("Door Glyph", root, pos + new Vector3(0, 2.45f, -0.4f), new Vector3(1.6f, 0.5f, 0.1f), Mat("GlyphStrip", Color.gray, 0f, 0.3f, true), false);
             var door = Box("Door", root, pos, new Vector3(2.2f, 3f, 0.5f), Carved).transform;
-            plate = Box("Symbol Plate", root, pos + new Vector3(0, 2.5f, -0.15f), new Vector3(1.8f, 0.7f, 0.15f), Glyph, false).GetComponent<Renderer>();
-            symbolText = Text3D("Symbol Text", root, pos + new Vector3(0, 2.5f, -0.25f), "", 0.09f, Color.white);
-            return door;
+            Box("Door Ring L", door, new Vector3(-0.25f, 0f, -0.55f), new Vector3(0.12f, 0.12f, 0.1f), Gold, false);
+            Box("Door Ring R", door, new Vector3(0.25f, 0f, -0.55f), new Vector3(0.12f, 0.12f, 0.1f), Gold, false);
+
+            var fxGo = new GameObject("Door FX");
+            fxGo.transform.SetParent(root, false);
+            fxGo.transform.localPosition = pos;
+            var fx = fxGo.AddComponent<DoorFX>();
+            fx.door = door;
+            fx.lightSpill = Box("Light Spill", root, pos + new Vector3(0, 0f, 0.24f), new Vector3(2.15f, 2.95f, 0.02f), Mat("LightSpill", new Color(1f, 0.85f, 0.6f), 0f, 0f, true), false).GetComponent<Renderer>();
+            var glow = new GameObject("Door Glow").AddComponent<Light>();
+            glow.transform.SetParent(fxGo.transform, false);
+            glow.transform.localPosition = new Vector3(0, 0f, -1.2f);
+            glow.type = LightType.Point; glow.color = new Color(1f, 0.8f, 0.5f); glow.range = 9f; glow.intensity = 0f; glow.shadows = LightShadows.None;
+            fx.glow = glow;
+            fx.dust = FxBurst(fxGo.transform, "Dust Cloud", new Vector3(0, -1.4f, -0.6f), new Color(0.75f, 0.65f, 0.5f, 0.5f), 0.4f, 1.2f, 1.2f, 2.5f, -0.05f, 60, new Vector3(2.6f, 0.2f, 0.6f));
+            fx.debris = FxBurst(fxGo.transform, "Debris", new Vector3(0, 1.8f, -0.5f), new Color(0.55f, 0.45f, 0.35f, 1f), 0.05f, 0.14f, 1.5f, 0.5f, 1.5f, 40, new Vector3(2.4f, 0.1f, 0.4f));
+            return (door, fx);
         }
 
-        static RoomManager AddRoomManager(Transform root, int index, Transform door, TextMesh text, Renderer plate, ExitTrigger exit, PuzzleStep[] steps, Station[] stations)
+        static ParticleSystem FxBurst(Transform parent, string name, Vector3 pos, Color color, float sizeMin, float sizeMax, float life, float speed, float gravity, int burst, Vector3 box)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = pos;
+            var ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = ps.main;
+            main.loop = false; main.playOnAwake = false;
+            main.duration = 1.5f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(life * 0.6f, life * 1.4f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(speed * 0.4f, speed);
+            main.startSize = new ParticleSystem.MinMaxCurve(sizeMin, sizeMax);
+            main.startColor = color;
+            main.gravityModifier = gravity;
+            main.maxParticles = 300;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            var em = ps.emission; em.rateOverTime = burst / 1.5f;
+            em.SetBursts(new[] { new ParticleSystem.Burst(0f, (short)burst) });
+            var sh = ps.shape; sh.shapeType = ParticleSystemShapeType.Box; sh.scale = box;
+            var col = ps.colorOverLifetime; col.enabled = true;
+            var g = new Gradient();
+            g.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                      new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0f, 1f) });
+            col.color = g;
+            var r = go.GetComponent<ParticleSystemRenderer>();
+            r.sharedMaterial = SoftParticleMat();
+            return ps;
+        }
+
+        /// <summary>Particules non additives (poussière, gravats).</summary>
+        static Material SoftParticleMat()
+        {
+            string path = $"{MatDir}/SoftParticle.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m != null) return m;
+            m = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit"));
+            m.SetFloat("_Surface", 1f);
+            m.SetFloat("_Blend", 0f);
+            m.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            m.SetFloat("_DstBlend", (float)BlendMode.OneMinusSrcAlpha);
+            m.SetFloat("_ZWrite", 0f);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.renderQueue = (int)RenderQueue.Transparent;
+            var tex = AssetDatabase.GetBuiltinExtraResource<Texture2D>("Default-Particle.psd");
+            if (tex != null) m.SetTexture("_BaseMap", tex);
+            AssetDatabase.CreateAsset(m, path);
+            return m;
+        }
+
+        static RoomManager AddRoomManager(Transform root, int index, (Transform door, DoorFX fx) door, ExitTrigger exit, PuzzleStep[] steps, Station[] stations)
         {
             Dust(root, new Vector3(0, 2.5f, 0f), new Vector3(13f, 4f, 22f));
             var rm = root.gameObject.AddComponent<RoomManager>();
             rm.sparks = Sparks(root);
             rm.roomIndex = index;
-            rm.door = door; rm.symbolText = text; rm.symbolPlate = plate; rm.exit = exit;
+            rm.door = door.door; rm.doorFx = door.fx; rm.exit = exit;
             rm.steps = steps; rm.stations = stations;
             return rm;
         }
@@ -830,7 +905,6 @@ namespace LostTemple.EditorTools
             sweeper.AddComponent<Rigidbody>();
             sweeper.AddComponent<Sweeper>().speed = 55f;
 
-            // Pièges et reliques sur le chemin de l'explorateur
             SpikeTrap(root, new Vector3(-5f, 0, -1.5f), new Vector2(4f, 1.6f), 0f);
             SpikeTrap(root, new Vector3(-5f, 0, 2.5f), new Vector2(4f, 1.6f), 1.4f);
             Relic(root, new Vector3(-6.3f, 0.8f, 0.5f));
@@ -840,10 +914,9 @@ namespace LostTemple.EditorTools
             foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 3f), new Vector3(6.7f, 2.6f, 3f), new Vector3(-6.7f, 2.6f, 8f), new Vector3(6.7f, 2.6f, 8f) })
                 Torch(root, t);
 
-            var door = Door(root, new Vector3(-1f, 1.5f, 9.75f), out var symText, out var plate);
+            var door = Door(root, new Vector3(-1f, 1.5f, 9.75f));
             var exit = Exit(root, new Vector3(-1f, 0f, 8.7f));
 
-            // Levier de la boule
             Prim(PrimitiveType.Cylinder, "Lever Base", root, new Vector3(-3.6f, 0.4f, -4.8f), new Vector3(0.7f, 0.4f, 0.7f), Carved);
             var lever = Box("Lever", root, new Vector3(-3.6f, 1.1f, -4.8f), new Vector3(0.12f, 0.8f, 0.12f), Gold, false);
             lever.transform.rotation = Quaternion.Euler(0, 0, -25);
@@ -869,29 +942,29 @@ namespace LostTemple.EditorTools
             var st = MakeStation(root, "Levier", new Vector3(-4.6f, 0f, -4.8f), puzzle);
             var player = Explorer(root, new Vector3(-3f, 0.05f, -10f), 0f, true);
             FollowCamera(cam, player);
-            AddRoomManager(root, 0, door, symText, plate, exit, new PuzzleStep[] { puzzle }, new[] { st });
+            AddRoomManager(root, 0, door, exit, new PuzzleStep[] { puzzle }, new[] { st });
             return scene;
         }
 
-        // ================================================================== Salle 2 — Boussole + Gyroscope
+        // ================================================================== Salle 2 — Boussole
 
         static Scene BuildRoom2()
         {
             var (scene, root, cam) = NewRoom("Room2", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.15f, 0.16f, 0.25f));
             Shell(root, 14f, -12f, 12f);
 
-            // Mini-labyrinthe à l'entrée
+            // Labyrinthe
             Box("Maze Wall 1", root, new Vector3(-2f, 1.5f, -8.5f), new Vector3(10f, 3f, 0.7f), Sand);
             Box("Maze Wall 2", root, new Vector3(4.5f, 1.5f, -4.8f), new Vector3(5f, 3f, 0.7f), Sand);
+            Box("Maze Wall 3", root, new Vector3(-4.5f, 1.5f, 4.5f), new Vector3(5f, 3f, 0.7f), Sand);
+            Box("Maze Wall 4", root, new Vector3(3f, 1.5f, 4.5f), new Vector3(2f, 3f, 0.7f), Sand);
 
-            // Boussole magique
             Prim(PrimitiveType.Cylinder, "Compass Pedestal", root, new Vector3(-3f, 0.5f, -5.5f), new Vector3(1.4f, 0.5f, 1.4f), Carved);
             Prim(PrimitiveType.Cylinder, "Compass Dial", root, new Vector3(-3f, 1.02f, -5.5f), new Vector3(1.3f, 0.02f, 1.3f), Glyph, false);
             var needle = Empty("Needle Pivot", root, new Vector3(-3f, 1.1f, -5.5f));
             Box("Needle", needle, new Vector3(0, 0, 0.3f), new Vector3(0.12f, 0.06f, 0.9f), Gold, false);
             var gem = Prim(PrimitiveType.Sphere, "Needle Gem", needle, new Vector3(0, 0, 0.8f), Vector3.one * 0.22f, Mat("Gem", new Color(0.3f, 0.5f, 1f), 0.2f, 0.9f, true), false);
 
-            // Mur-porte : le passage central s'ouvre avec la boussole
             Box("Gate Left", root, new Vector3(-4.5f, 1.5f, -1.5f), new Vector3(5f, 3f, 0.8f), Sand);
             Box("Gate Right", root, new Vector3(4.5f, 1.5f, -1.5f), new Vector3(5f, 3f, 0.8f), Sand);
             Box("Gate Lintel", root, new Vector3(0, 3.2f, -1.5f), new Vector3(14f, 0.4f, 1f), Carved, false);
@@ -906,7 +979,37 @@ namespace LostTemple.EditorTools
             compass.cameraPose = Pose("Cam Compass", root, new Vector3(-3f, 6.5f, -11f), new Vector3(-2f, 0.8f, -3f));
             compass.needle = needle; compass.needleGem = gem.GetComponent<Renderer>(); compass.passageWall = passage;
 
-            // Statues
+            FireJet(root, new Vector3(-4.5f, 0, 8.5f), 0f);
+            FireJet(root, new Vector3(-1.5f, 0, 8.5f), 1.6f);
+            FireJet(root, new Vector3(1.5f, 0, 8.5f), 0.8f);
+            FireJet(root, new Vector3(4.5f, 0, 8.5f), 2.4f);
+
+            Relic(root, new Vector3(-6f, 0.8f, -10.5f));
+            Relic(root, new Vector3(6f, 0.8f, 1.5f));
+            Relic(root, new Vector3(-6f, 0.8f, 6.5f));
+
+            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -6f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-6.7f, 2.6f, 10f), new Vector3(6.7f, 2.6f, 10f) })
+                Torch(root, t);
+
+            var door = Door(root, new Vector3(0f, 1.5f, 11.75f));
+            var exit = Exit(root, new Vector3(0f, 0f, 10.7f));
+            var st = MakeStation(root, "Boussole", new Vector3(-1.4f, 0f, -5.5f), compass);
+            var player = Explorer(root, new Vector3(-4f, 0.05f, -10.5f), 0f, true);
+            FollowCamera(cam, player);
+            AddRoomManager(root, 1, door, exit, new PuzzleStep[] { compass }, new[] { st });
+            return scene;
+        }
+
+        // ================================================================== Salle 3 — Gyroscope
+
+        static Scene BuildRoom3()
+        {
+            var (scene, root, cam) = NewRoom("Room3", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.15f, 0.16f, 0.25f));
+            Shell(root, 14f, -12f, 12f);
+
+            FloorSweeper(root, new Vector3(-2.5f, 0, -7.5f), 4.6f, 70f);
+            FloorSweeper(root, new Vector3(2.5f, 0, -3.5f), 4.6f, -85f);
+
             var statueAlign = root.gameObject.AddComponent<StatueAlignPuzzle>();
             statueAlign.sensor = SensorKind.Gyroscope;
             statueAlign.objective = "Orientez chaque statue vers son symbole au sol";
@@ -934,72 +1037,181 @@ namespace LostTemple.EditorTools
                 statueAlign.statues[i] = pivot; statueAlign.beams[i] = beam.GetComponent<Renderer>(); statueAlign.targets[i] = target.GetComponent<Renderer>();
             }
 
-            // Jets de feu avant la porte
-            FireJet(root, new Vector3(-4.5f, 0, 8.5f), 0f);
-            FireJet(root, new Vector3(-1.5f, 0, 8.5f), 1.6f);
-            FireJet(root, new Vector3(1.5f, 0, 8.5f), 0.8f);
-            FireJet(root, new Vector3(4.5f, 0, 8.5f), 2.4f);
-
+            SpikeTrap(root, new Vector3(0, 0, 9f), new Vector2(6f, 1.6f), 0.5f, 2.6f);
             Relic(root, new Vector3(-6f, 0.8f, -10.5f));
-            Relic(root, new Vector3(6f, 0.8f, -3f));
-            Relic(root, new Vector3(6f, 0.8f, 10.8f));
+            Relic(root, new Vector3(6f, 0.8f, -6f));
+            Relic(root, new Vector3(6f, 0.8f, 10.5f));
 
-            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -6f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 3f), new Vector3(6.7f, 2.6f, 3f), new Vector3(-6.7f, 2.6f, 10f), new Vector3(6.7f, 2.6f, 10f) })
+            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-6.7f, 2.6f, 10f), new Vector3(6.7f, 2.6f, 10f) })
                 Torch(root, t);
 
-            var door = Door(root, new Vector3(0f, 1.5f, 11.75f), out var symText, out var plate);
+            var door = Door(root, new Vector3(0f, 1.5f, 11.75f));
             var exit = Exit(root, new Vector3(0f, 0f, 10.7f));
-            var st1 = MakeStation(root, "Boussole", new Vector3(-1.4f, 0f, -5.5f), compass);
-            var st2 = MakeStation(root, "Statues", new Vector3(0f, 0f, 1.6f), statueAlign);
-            var player = Explorer(root, new Vector3(-4f, 0.05f, -10.5f), 0f, true);
+            var st = MakeStation(root, "Statues", new Vector3(0f, 0f, 1.6f), statueAlign);
+            var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
-            AddRoomManager(root, 1, door, symText, plate, exit, new PuzzleStep[] { compass, statueAlign }, new[] { st1, st2 });
+            AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign }, new[] { st });
             return scene;
         }
 
-        // ================================================================== Salle 3 — Micro + Proximité
+        // ================================================================== Salle 4 — Micro : le monstre
 
-        static Scene BuildRoom3()
+        static MonsterController Monster(Transform root, Vector3 pos)
         {
-            var (scene, root, cam) = NewRoom("Room3", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.14f, 0.15f, 0.24f));
+            var skin = Mat("MonsterSkin", new Color(0.24f, 0.36f, 0.2f), 0.05f, 0.55f);
+            var belly = Mat("MonsterBelly", new Color(0.62f, 0.52f, 0.33f), 0f, 0.4f);
+            var horn = Mat("MonsterHorn", new Color(0.88f, 0.82f, 0.7f), 0f, 0.5f);
+            var teeth = Mat("Teeth", new Color(0.95f, 0.93f, 0.85f), 0f, 0.6f);
+            var claw = Mat("Claw", new Color(0.12f, 0.1f, 0.1f), 0.3f, 0.7f);
+            var eyeMat = Mat("MonsterEye", new Color(0.3f, 0.05f, 0.02f), 0f, 0.9f, true);
+
+            var go = new GameObject("Monster");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = pos;
+            go.transform.localRotation = Quaternion.Euler(0, 180f, 0);   // il regarde vers l'explorateur
+
+            // Jambes (restent au sol)
+            Prim(PrimitiveType.Capsule, "Leg L", go.transform, new Vector3(-0.75f, 0.6f, 0f), new Vector3(0.7f, 0.6f, 0.7f), skin, false);
+            Prim(PrimitiveType.Capsule, "Leg R", go.transform, new Vector3(0.75f, 0.6f, 0f), new Vector3(0.7f, 0.6f, 0.7f), skin, false);
+            Prim(PrimitiveType.Sphere, "Foot L", go.transform, new Vector3(-0.8f, 0.12f, 0.35f), new Vector3(0.6f, 0.25f, 0.9f), skin, false);
+            Prim(PrimitiveType.Sphere, "Foot R", go.transform, new Vector3(0.8f, 0.12f, 0.35f), new Vector3(0.6f, 0.25f, 0.9f), skin, false);
+
+            var body = Empty("Body", go.transform, new Vector3(0, 1.7f, 0));
+            Prim(PrimitiveType.Sphere, "Torso", body, Vector3.zero, new Vector3(2.5f, 2.3f, 1.8f), skin, false);
+            Prim(PrimitiveType.Sphere, "Belly", body, new Vector3(0, -0.2f, 0.62f), new Vector3(1.6f, 1.6f, 0.7f), belly, false);
+            for (int i = 0; i < 5; i++)
+            {
+                var sp = Prim(PrimitiveType.Sphere, "Back Spike", body, new Vector3(0, 0.9f - i * 0.4f, -0.75f - i * 0.05f), new Vector3(0.22f, 0.7f, 0.22f), horn, false);
+                sp.transform.localRotation = Quaternion.Euler(-50f, 0, 0);
+            }
+
+            var head = Empty("Head", body, new Vector3(0, 1.35f, 0.55f));
+            Prim(PrimitiveType.Sphere, "Skull", head, Vector3.zero, new Vector3(1.35f, 1.1f, 1.2f), skin, false);
+            Box("Snout", head, new Vector3(0, -0.15f, 0.6f), new Vector3(0.95f, 0.45f, 0.7f), skin, false);
+            Box("Brow", head, new Vector3(0, 0.3f, 0.48f), new Vector3(1.1f, 0.18f, 0.3f), skin, false);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                var h = Prim(PrimitiveType.Capsule, "Horn", head, new Vector3(s * 0.5f, 0.6f, -0.05f), new Vector3(0.2f, 0.5f, 0.2f), horn, false);
+                h.transform.localRotation = Quaternion.Euler(-25f, 0, -s * 35f);
+                for (int t = 0; t < 3; t++)
+                    Prim(PrimitiveType.Sphere, "Fang", head, new Vector3(s * (0.12f + t * 0.12f), -0.4f, 0.85f), new Vector3(0.07f, 0.18f, 0.07f), teeth, false);
+            }
+            var eyeL = Prim(PrimitiveType.Sphere, "Eye L", head, new Vector3(-0.3f, 0.12f, 0.55f), Vector3.one * 0.22f, eyeMat, false);
+            var eyeR = Prim(PrimitiveType.Sphere, "Eye R", head, new Vector3(0.3f, 0.12f, 0.55f), Vector3.one * 0.22f, eyeMat, false);
+            var el = new GameObject("Eye Light").AddComponent<Light>();
+            el.transform.SetParent(head, false);
+            el.transform.localPosition = new Vector3(0, 0.1f, 1.2f);
+            el.type = LightType.Point; el.color = new Color(1f, 0.2f, 0.1f); el.range = 5f; el.intensity = 0f; el.shadows = LightShadows.None;
+
+            var jaw = Empty("Jaw", head, new Vector3(0, -0.35f, 0.25f));
+            Box("Jaw Bone", jaw, new Vector3(0, -0.08f, 0.35f), new Vector3(0.85f, 0.2f, 0.75f), skin, false);
+            for (int t = -2; t <= 2; t++)
+                Prim(PrimitiveType.Sphere, "Tooth", jaw, new Vector3(t * 0.15f, 0.05f, 0.65f), new Vector3(0.07f, 0.15f, 0.07f), teeth, false);
+
+            Transform Arm(string n, float x)
+            {
+                var pivot = Empty(n, body, new Vector3(x, 0.55f, 0.15f));
+                Prim(PrimitiveType.Capsule, "Upper", pivot, new Vector3(0, -0.6f, 0), new Vector3(0.5f, 0.75f, 0.5f), skin, false);
+                Prim(PrimitiveType.Capsule, "Fore", pivot, new Vector3(0, -1.45f, 0.15f), new Vector3(0.42f, 0.6f, 0.42f), skin, false);
+                for (int c = -1; c <= 1; c++)
+                {
+                    var cl = Prim(PrimitiveType.Sphere, "Claw", pivot, new Vector3(c * 0.13f, -2.05f, 0.35f), new Vector3(0.08f, 0.3f, 0.08f), claw, false);
+                    cl.transform.localRotation = Quaternion.Euler(35f, 0, 0);
+                }
+                return pivot;
+            }
+            var armL = Arm("Arm L", -1.25f);
+            var armR = Arm("Arm R", 1.25f);
+
+            var death = FxBurst(go.transform, "Death Dust", new Vector3(0, 2f, 0), new Color(0.35f, 0.15f, 0.45f, 0.8f), 0.4f, 1.1f, 2f, 3f, -0.1f, 150, new Vector3(2.5f, 3f, 2f));
+
+            var m = go.AddComponent<MonsterController>();
+            m.body = body; m.head = head; m.jaw = jaw; m.armL = armL; m.armR = armR;
+            m.eyes = new[] { eyeL.GetComponent<Renderer>(), eyeR.GetComponent<Renderer>() };
+            m.eyeLight = el; m.deathFx = death;
+            return m;
+        }
+
+        static Scene BuildRoom4()
+        {
+            var (scene, root, cam) = NewRoom("Room4", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.13f, 0.12f, 0.2f));
             Shell(root, 14f, -12f, 12f);
 
-            // Lames tournantes au ras du sol
-            FloorSweeper(root, new Vector3(-2.5f, 0, -7f), 4.6f, 70f);
-            FloorSweeper(root, new Vector3(2.5f, 0, -2.5f), 4.6f, -85f);
+            SpikeTrap(root, new Vector3(-3.5f, 0, -6.5f), new Vector2(7f, 1.6f), 0f, 2.6f);
+            SpikeTrap(root, new Vector3(3.5f, 0, -4f), new Vector2(7f, 1.6f), 1.3f, 2.6f);
 
-            // Gardien
-            Box("Guardian Base", root, new Vector3(0, 0.4f, 8.8f), new Vector3(4.4f, 0.8f, 2.2f), DarkStone);
-            Box("Guardian Body", root, new Vector3(0, 2.4f, 8.8f), new Vector3(2.8f, 3.2f, 1.4f), Sand);
-            Box("Guardian Chest", root, new Vector3(0, 2.8f, 8.08f), new Vector3(1.4f, 1f, 0.1f), Gold, false);
-            Box("Guardian Arm L", root, new Vector3(-1.8f, 2.4f, 8.5f), new Vector3(0.7f, 2.6f, 0.7f), Sand);
-            Box("Guardian Arm R", root, new Vector3(1.8f, 2.4f, 8.5f), new Vector3(0.7f, 2.6f, 0.7f), Sand);
-            var head = Empty("Guardian Head", root, new Vector3(0, 4.7f, 8.7f));
-            Box("Head", head, Vector3.zero, new Vector3(1.9f, 1.4f, 1.4f), Sand, false);
-            Box("Crown", head, new Vector3(0, 0.85f, 0), new Vector3(2.2f, 0.3f, 1.5f), Gold, false);
-            var eyeMat = Mat("Eye", new Color(0.1f, 0.15f, 0.2f), 0.3f, 0.9f, true);
-            var eyeL = Prim(PrimitiveType.Sphere, "Eye L", head, new Vector3(-0.45f, 0.1f, -0.7f), Vector3.one * 0.32f, eyeMat, false);
-            var eyeR = Prim(PrimitiveType.Sphere, "Eye R", head, new Vector3(0.45f, 0.1f, -0.7f), Vector3.one * 0.32f, eyeMat, false);
+            // Arène : couloir où roule la boule d'énergie jusqu'au monstre
+            Box("Ball Track", root, new Vector3(0, 0.02f, 4f), new Vector3(1.6f, 0.04f, 7f), DarkStone, false);
+            Box("Track Rail L", root, new Vector3(-0.9f, 0.12f, 4f), new Vector3(0.15f, 0.25f, 7f), Gold, false);
+            Box("Track Rail R", root, new Vector3(0.9f, 0.12f, 4f), new Vector3(0.15f, 0.25f, 7f), Gold, false);
+            Prim(PrimitiveType.Cylinder, "Monster Dais", root, new Vector3(0, 0.15f, 8.6f), new Vector3(5f, 0.15f, 3.5f), Carved);
+            var monster = Monster(root, new Vector3(0, 0.3f, 8.6f));
 
-            var mic = root.gameObject.AddComponent<MicPuzzle>();
-            mic.sensor = SensorKind.Microphone;
-            mic.objective = "Réveillez le gardien de pierre";
-            mic.tutorial = "Le gardien dort. Soufflez sur le micro du téléphone (en bas de l'appareil) ou parlez fort pendant quelques secondes.\n\nSes yeux s'allument à mesure qu'il se réveille.";
-            mic.hint = "Soufflez de façon continue près du bas du téléphone. Si rien ne se passe, augmentez la sensibilité du micro dans Pause.";
-            mic.eyes = new[] { eyeL.GetComponent<Renderer>(), eyeR.GetComponent<Renderer>() };
-            mic.guardianHead = head;
-            mic.fxAnchor = head;
-            mic.cameraPose = Pose("Cam Guardian", root, new Vector3(0, 4.5f, 1f), new Vector3(0, 3.6f, 8.8f));
+            var start = Empty("Ball Start", root, new Vector3(0, 0.95f, 1f));
+            var end = Empty("Ball End", root, new Vector3(0, 0.95f, 6.9f));
+            var ball = Prim(PrimitiveType.Sphere, "Energy Ball", root, start.localPosition, Vector3.one * 0.9f, Mat("Energy", new Color(0.4f, 0.75f, 1f), 0.2f, 0.9f, true), false);
+            var bl = new GameObject("Ball Light").AddComponent<Light>();
+            bl.transform.SetParent(ball.transform, false);
+            bl.type = LightType.Point; bl.color = new Color(0.4f, 0.8f, 1f); bl.range = 5f; bl.intensity = 2f; bl.shadows = LightShadows.None;
+            ball.SetActive(false);
+            var impact = FxBurst(root, "Impact", new Vector3(0, 1.5f, 7f), new Color(0.5f, 0.85f, 1f, 1f), 0.15f, 0.5f, 1.2f, 7f, 0.2f, 120, new Vector3(0.5f, 0.5f, 0.5f));
+            impact.GetComponent<ParticleSystemRenderer>().sharedMaterial = ParticleMat();
 
-            // Runes et cachette
+            var wake = root.gameObject.AddComponent<MonsterWakePuzzle>();
+            wake.sensor = SensorKind.Microphone;
+            wake.objective = "Réveillez le monstre endormi";
+            wake.tutorial = "Un monstre dort au fond de la salle et bloque la sortie.\n\nParlez fort ou soufflez sur le micro du téléphone (en bas de l'appareil) pendant quelques secondes pour le réveiller.";
+            wake.hint = "Parlez fort de façon continue près du bas du téléphone. Si rien ne se passe, augmentez la sensibilité du micro dans Pause.";
+            wake.monster = monster;
+            wake.fxAnchor = monster.head;
+            wake.cameraPose = Pose("Cam Monster", root, new Vector3(0, 4.5f, -2.5f), new Vector3(0, 2.6f, 8f));
+
+            var push = root.gameObject.AddComponent<VoiceBallPuzzle>();
+            push.sensor = SensorKind.Microphone;
+            push.objective = "Poussez la boule d'énergie avec votre voix pour vaincre le monstre";
+            push.tutorial = "Le monstre est réveillé et furieux !\n\nCriez, chantez ou soufflez : plus votre voix est forte, plus la boule d'énergie avance vers lui. Si vous vous taisez, il la repousse.\n\nQuand elle le touche, il est détruit.";
+            push.hint = "Gardez un son fort et continu (un « Aaaaah ! » prolongé) jusqu'à ce que la boule touche le monstre.";
+            push.ball = ball.transform; push.ballRenderer = ball.GetComponent<Renderer>(); push.ballLight = bl;
+            push.startPoint = start; push.monsterPoint = end; push.monster = monster; push.impactFx = impact;
+            push.fxAnchor = end;
+            push.cameraPose = Pose("Cam Duel", root, new Vector3(0, 5.5f, -3f), new Vector3(0, 1.6f, 5.5f));
+
+            Relic(root, new Vector3(-6f, 0.8f, -10.5f));
+            Relic(root, new Vector3(6f, 0.8f, -8.5f));
+            Relic(root, new Vector3(-6f, 0.8f, 3f));
+
+            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 4f), new Vector3(6.7f, 2.6f, 4f), new Vector3(-3.5f, 2.6f, 11.6f), new Vector3(3.5f, 2.6f, 11.6f) })
+                Torch(root, t);
+
+            var door = Door(root, new Vector3(5f, 1.5f, 11.75f));
+            var exit = Exit(root, new Vector3(5f, 0f, 10.7f));
+            var st = MakeStation(root, "Monstre", new Vector3(0f, 0f, -0.5f), wake);
+            var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
+            FollowCamera(cam, player);
+            AddRoomManager(root, 3, door, exit, new PuzzleStep[] { wake, push }, new[] { st, null });
+            return scene;
+        }
+
+        // ================================================================== Salle 5 — Proximité
+
+        static Scene BuildRoom5()
+        {
+            var (scene, root, cam) = NewRoom("Room5", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.14f, 0.15f, 0.24f));
+            Shell(root, 14f, -12f, 12f);
+
+            FireJet(root, new Vector3(-4.5f, 0, -6f), 0f);
+            FireJet(root, new Vector3(-1.5f, 0, -6f), 0.8f);
+            FireJet(root, new Vector3(1.5f, 0, -6f), 1.6f);
+            FireJet(root, new Vector3(4.5f, 0, -6f), 2.4f);
+
             var runeMat = Mat("Rune", new Color(0.12f, 0.13f, 0.16f), 0f, 0.6f, true);
             var runes = new Renderer[3];
             for (int i = 0; i < 3; i++)
-                runes[i] = Prim(PrimitiveType.Cylinder, "Rune " + (i + 1), root, new Vector3(3f + i * 1.5f, 0.03f, 2.6f), new Vector3(1.1f, 0.03f, 1.1f), runeMat, false).GetComponent<Renderer>();
-            Box("Cache", root, new Vector3(4.5f, 0.4f, 4.6f), new Vector3(1.4f, 0.8f, 1f), Carved);
-            var lidPivot = Empty("Cache Lid Pivot", root, new Vector3(4.5f, 0.82f, 5.1f));
+                runes[i] = Prim(PrimitiveType.Cylinder, "Rune " + (i + 1), root, new Vector3(-1.5f + i * 1.5f, 0.03f, 3f), new Vector3(1.1f, 0.03f, 1.1f), runeMat, false).GetComponent<Renderer>();
+            Box("Cache", root, new Vector3(0, 0.4f, 5f), new Vector3(1.4f, 0.8f, 1f), Carved);
+            var lidPivot = Empty("Cache Lid Pivot", root, new Vector3(0, 0.82f, 5.5f));
             Box("Lid", lidPivot, new Vector3(0, 0.08f, -0.5f), new Vector3(1.5f, 0.16f, 1.05f), Gold, false);
-            var treasure = Prim(PrimitiveType.Sphere, "Cache Glow", root, new Vector3(4.5f, 0.75f, 4.6f), new Vector3(0.5f, 0.15f, 0.5f), Gold, false);
+            var treasure = Prim(PrimitiveType.Sphere, "Cache Glow", root, new Vector3(0, 0.75f, 5f), new Vector3(0.5f, 0.15f, 0.5f), Gold, false);
 
             var prox = root.gameObject.AddComponent<ProximityPuzzle>();
             prox.sensor = SensorKind.Proximity;
@@ -1008,91 +1220,235 @@ namespace LostTemple.EditorTools
             prox.hint = "Passez la main à 2-3 cm au-dessus du haut de l'écran, puis éloignez-la complètement.";
             prox.runes = runes; prox.cacheLid = lidPivot;
             prox.fxAnchor = treasure.transform;
-            prox.cameraPose = Pose("Cam Cache", root, new Vector3(4.5f, 6f, -2.5f), new Vector3(4.5f, 0.3f, 3.6f));
+            prox.cameraPose = Pose("Cam Cache", root, new Vector3(0f, 6f, -2f), new Vector3(0f, 0.3f, 4f));
 
-            SpikeTrap(root, new Vector3(-4.5f, 0, 8.8f), new Vector2(3.4f, 1.6f), 0.5f, 2.4f);
-            Relic(root, new Vector3(-6f, 0.8f, -10.5f));
-            Relic(root, new Vector3(6f, 0.8f, -9f));
-            Relic(root, new Vector3(-6f, 0.8f, 5f));
+            SpikeTrap(root, new Vector3(-3.5f, 0, 8.5f), new Vector2(7f, 1.6f), 0f, 2.4f);
+            SpikeTrap(root, new Vector3(3.5f, 0, 8.5f), new Vector2(7f, 1.6f), 1.2f, 2.4f);
+            Relic(root, new Vector3(6f, 0.8f, -10.5f));
+            Relic(root, new Vector3(-6f, 0.8f, -2f));
+            Relic(root, new Vector3(6f, 0.8f, 6f));
 
-            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-3f, 2.6f, 11.6f), new Vector3(3f, 2.6f, 11.6f) })
+            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-6.7f, 2.6f, 10f), new Vector3(6.7f, 2.6f, 10f) })
                 Torch(root, t);
 
-            var door = Door(root, new Vector3(-4.5f, 1.5f, 11.75f), out var symText, out var plate);
+            var door = Door(root, new Vector3(-4.5f, 1.5f, 11.75f));
             var exit = Exit(root, new Vector3(-4.5f, 0f, 10.7f));
-            var st1 = MakeStation(root, "Gardien", new Vector3(0f, 0f, 4.5f), mic);
-            var st2 = MakeStation(root, "Cachette", new Vector3(4.5f, 0f, 0.8f), prox);
+            var st = MakeStation(root, "Cachette", new Vector3(0f, 0f, 1f), prox);
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
-            AddRoomManager(root, 2, door, symText, plate, exit, new PuzzleStep[] { mic, prox }, new[] { st1, st2 });
+            AddRoomManager(root, 4, door, exit, new PuzzleStep[] { prox }, new[] { st });
             return scene;
         }
 
-        // ================================================================== Salle 4 — Luminosité + code final
+        // ================================================================== Salle 6 — Luminosité : le pont invisible
 
-        static Scene BuildRoom4()
+        static Scene BuildRoom6()
         {
-            var (scene, root, cam) = NewRoom("Room4", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.07f, 0.075f, 0.13f));
-            Shell(root, 14f, -12f, 12f);
+            var (scene, root, cam) = NewRoom("Room6", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.06f, 0.065f, 0.12f));
+            Box("Floor Front", root, new Vector3(0, -0.25f, -6f), new Vector3(14f, 0.5f, 12f), Stone);
+            Box("Floor Back", root, new Vector3(0, -0.25f, 9f), new Vector3(14f, 0.5f, 6f), Stone);
+            Box("Chasm", root, new Vector3(0, -7f, 3f), new Vector3(14f, 1f, 6f), Pit);
+            Box("Chasm Edge Front", root, new Vector3(0, -0.3f, 0.05f), new Vector3(14f, 0.6f, 0.15f), DarkStone, false);
+            Box("Chasm Edge Back", root, new Vector3(0, -0.3f, 5.95f), new Vector3(14f, 0.6f, 0.15f), DarkStone, false);
+            Shell(root, 14f, -12f, 12f, false);
 
-            // Couloir de pics sur toute la largeur
             SpikeTrap(root, new Vector3(0, 0, -7f), new Vector2(14f, 1.6f), 0f, 3f);
-            SpikeTrap(root, new Vector3(0, 0, -4f), new Vector2(14f, 1.6f), 1f, 3f);
-            SpikeTrap(root, new Vector3(0, 0, -1f), new Vector2(14f, 1.6f), 2f, 3f);
 
-            var wallGlyph = Box("Symbol Wall", root, new Vector3(0, 3.3f, 11.94f), new Vector3(3.6f, 1.8f, 0.1f), Glyph, false).GetComponent<Renderer>();
-            var hidden = Text3D("Hidden Symbol", root, new Vector3(0, 3.3f, 11.85f), "", 0.14f, new Color(1, 1, 1, 0));
-            var rl = new GameObject("Reveal Light").AddComponent<Light>();
-            rl.transform.SetParent(root, false);
-            rl.transform.localPosition = new Vector3(0, 3.3f, 10f);
-            rl.type = LightType.Point; rl.color = new Color(1f, 0.8f, 0.4f); rl.range = 5f; rl.intensity = 0f;
-
-            // Les 6 symboles gravés de part et d'autre (rappel visuel du clavier)
+            // Pont de cristal : invisible et non solide tant que la lumière ne l'a pas révélé
+            var crystal = Mat("Crystal", new Color(0.35f, 0.6f, 0.8f), 0.2f, 0.95f, true);
+            var parts = new List<Renderer>();
+            var solids = new List<Collider>();
             for (int i = 0; i < 6; i++)
             {
-                float x = (i < 3 ? -5.6f : 2.6f) + (i % 3) * 1.5f;
-                Text3D("Glyph " + GameManager.GlyphNames[i], root, new Vector3(x, 1.4f + (i % 2) * 0.5f, 11.9f), GameManager.GlyphNames[i], 0.04f, GameManager.GlyphColors[i] * 0.7f);
+                var seg = Box("Crystal Bridge " + (i + 1), root, new Vector3(0, -0.15f, 0.5f + i), new Vector3(2.6f, 0.3f, 0.96f), crystal);
+                parts.Add(seg.GetComponent<Renderer>());
+                solids.Add(seg.GetComponent<Collider>());
             }
-
-            Prim(PrimitiveType.Cylinder, "Pedestal", root, new Vector3(0, 0.6f, 7.5f), new Vector3(1.2f, 0.6f, 1.2f), Carved);
-            Prim(PrimitiveType.Cylinder, "Pedestal Ring", root, new Vector3(0, 1.22f, 7.5f), new Vector3(1.3f, 0.04f, 1.3f), Gold, false);
-            var art = Box("Artefact", root, new Vector3(0, 1.75f, 7.5f), Vector3.one * 0.55f, Gold, false);
-            art.transform.rotation = Quaternion.Euler(45, 0, 45);
-            var al = new GameObject("Artefact Light").AddComponent<Light>();
-            al.transform.SetParent(art.transform, true);
-            al.transform.position = new Vector3(0, 2.4f, 7f);
-            al.type = LightType.Point; al.color = new Color(1f, 0.75f, 0.35f); al.range = 6f; al.intensity = 2f;
+            var rl = new GameObject("Reveal Light").AddComponent<Light>();
+            rl.transform.SetParent(root, false);
+            rl.transform.localPosition = new Vector3(0, 2f, 3f);
+            rl.type = LightType.Point; rl.color = new Color(0.5f, 0.85f, 1f); rl.range = 7f; rl.intensity = 0f;
 
             var light = root.gameObject.AddComponent<LightRevealPuzzle>();
             light.sensor = SensorKind.Light;
-            light.objective = "Révélez le dernier symbole gravé sur le mur";
-            light.tutorial = "Le dernier symbole n'apparaît qu'avec un changement de lumière.\n\nCouvrez le haut de l'écran avec la main pour faire l'obscurité, ou éclairez-le avec une lampe, et maintenez quelques secondes.";
+            light.objective = "Révélez le pont de cristal au-dessus du gouffre";
+            light.tutorial = "Un pont invisible enjambe le gouffre. Il n'apparaît qu'avec un changement de lumière.\n\nCouvrez le haut de l'écran avec la main pour faire l'obscurité, ou éclairez-le avec une lampe, et maintenez quelques secondes.";
             light.hint = "Le capteur de lumière est près de la caméra avant. Couvrez-le complètement ou approchez-le d'une lampe.";
-            light.fxAnchor = wallGlyph.transform;
-            light.cameraPose = Pose("Cam Wall", root, new Vector3(0, 3.6f, 3f), new Vector3(0, 3.1f, 12f));
-            light.hiddenSymbol = hidden; light.wallGlyph = wallGlyph; light.revealLight = rl;
-
-            var code = root.gameObject.AddComponent<CodePuzzle>();
-            code.usesSensor = false;
-            code.objective = "Touchez les 4 symboles dans l'ordre des salles";
-            code.tutorial = "Chaque salle vous a révélé un symbole. Touchez-les dans l'ordre : salle 1, salle 2, salle 3, puis celui du mur.\n\nUne erreur remet la séquence à zéro.";
-            code.hint = "Le 4e symbole est celui qui vient d'apparaître sur le mur.";
-            code.fxAnchor = art.transform;
-            code.cameraPose = Pose("Cam Artefact", root, new Vector3(0, 3.2f, 3.5f), new Vector3(0, 2.4f, 7.5f));
-            code.artefact = art.transform; code.artefactRenderer = art.GetComponent<Renderer>(); code.artefactLight = al;
+            light.hiddenParts = parts.ToArray(); light.solidParts = solids.ToArray(); light.revealLight = rl;
+            light.fxAnchor = Empty("Bridge FX", root, new Vector3(0, 0.5f, 3f));
+            light.cameraPose = Pose("Cam Bridge", root, new Vector3(-3f, 6f, -4f), new Vector3(0, 0f, 3.5f));
 
             Relic(root, new Vector3(-6f, 0.8f, -10.5f));
-            Relic(root, new Vector3(6f, 0.8f, -2.5f));
-            Relic(root, new Vector3(-6f, 0.8f, 9f));
+            Relic(root, new Vector3(0f, 0.9f, 3f));
+            Relic(root, new Vector3(6f, 0.8f, 10.5f));
 
-            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -10f), new Vector3(6.7f, 2.6f, -10f), new Vector3(-6.7f, 2.6f, 6f), new Vector3(6.7f, 2.6f, 6f) })
+            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 9f), new Vector3(6.7f, 2.6f, 9f) })
                 Torch(root, t);
 
-            var st1 = MakeStation(root, "Mur", new Vector3(0f, 0f, 3.5f), light);
-            var st2 = MakeStation(root, "Artefact", new Vector3(0f, 0f, 5.6f), code);
+            var door = Door(root, new Vector3(0f, 1.5f, 11.75f));
+            var exit = Exit(root, new Vector3(0f, 0f, 10.7f));
+            var st = MakeStation(root, "Gouffre", new Vector3(0f, 0f, -1.5f), light);
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
-            AddRoomManager(root, 3, null, null, null, null, new PuzzleStep[] { light, code }, new[] { st1, st2 });
+            AddRoomManager(root, 5, door, exit, new PuzzleStep[] { light }, new[] { st });
+            return scene;
+        }
+
+        // ================================================================== Salle 7 — Caméra : l'esprit Coyote
+
+        static CoyoteSpirit Coyote(Transform root, Vector3 pos)
+        {
+            var mat = Mat("Spirit", new Color(0.4f, 0.6f, 0.8f), 0f, 0.7f, true);
+            var dark = Mat("Black", new Color(0.05f, 0.05f, 0.05f), 0f, 0.6f);
+            var eye = Mat("SpiritEye", new Color(0.9f, 0.95f, 1f), 0f, 0.9f, true);
+            eye.SetColor("_EmissionColor", new Color(0.8f, 0.95f, 1f) * 3f);
+            var spirit = new List<Renderer>();
+
+            var go = new GameObject("Coyote Spirit");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = pos;
+            go.transform.localRotation = Quaternion.Euler(0, 180f, 0);
+
+            GameObject P(PrimitiveType t, string n, Transform parent, Vector3 p, Vector3 s, Vector3 rot)
+            {
+                var o = Prim(t, n, parent, p, s, mat, false);
+                o.transform.localRotation = Quaternion.Euler(rot);
+                spirit.Add(o.GetComponent<Renderer>());
+                return o;
+            }
+
+            P(PrimitiveType.Sphere, "Haunch", go.transform, new Vector3(0, 0.45f, -0.25f), new Vector3(0.85f, 0.75f, 1f), Vector3.zero);
+            P(PrimitiveType.Capsule, "Chest", go.transform, new Vector3(0, 0.95f, 0.2f), new Vector3(0.55f, 0.55f, 0.55f), new Vector3(-20, 0, 0));
+            for (int s = -1; s <= 1; s += 2)
+            {
+                P(PrimitiveType.Capsule, "Front Leg", go.transform, new Vector3(s * 0.15f, 0.38f, 0.45f), new Vector3(0.14f, 0.38f, 0.14f), Vector3.zero);
+                P(PrimitiveType.Sphere, "Back Paw", go.transform, new Vector3(s * 0.3f, 0.1f, 0.05f), new Vector3(0.22f, 0.15f, 0.4f), Vector3.zero);
+            }
+
+            var head = Empty("Head", go.transform, new Vector3(0, 1.5f, 0.4f));
+            P(PrimitiveType.Sphere, "Skull", head, Vector3.zero, new Vector3(0.48f, 0.42f, 0.5f), Vector3.zero);
+            P(PrimitiveType.Capsule, "Snout", head, new Vector3(0, -0.06f, 0.33f), new Vector3(0.2f, 0.22f, 0.2f), new Vector3(90, 0, 0));
+            Prim(PrimitiveType.Sphere, "Nose", head, new Vector3(0, -0.03f, 0.56f), Vector3.one * 0.08f, dark, false);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                P(PrimitiveType.Cube, "Ear", head, new Vector3(s * 0.15f, 0.3f, -0.05f), new Vector3(0.12f, 0.32f, 0.05f), new Vector3(0, 0, -s * 15f));
+                Prim(PrimitiveType.Sphere, "Eye", head, new Vector3(s * 0.11f, 0.07f, 0.21f), Vector3.one * 0.07f, eye, false);
+            }
+            var jaw = Empty("Jaw", head, new Vector3(0, -0.15f, 0.2f));
+            P(PrimitiveType.Cube, "Jaw Bone", jaw, new Vector3(0, 0, 0.18f), new Vector3(0.15f, 0.05f, 0.32f), Vector3.zero);
+
+            var tail = Empty("Tail", go.transform, new Vector3(0, 0.35f, -0.7f));
+            P(PrimitiveType.Capsule, "Tail Fur", tail, new Vector3(0, 0.15f, -0.3f), new Vector3(0.2f, 0.42f, 0.2f), new Vector3(60, 0, 0));
+
+            // Aura d'esprit
+            var aura = new GameObject("Aura");
+            aura.transform.SetParent(go.transform, false);
+            aura.transform.localPosition = new Vector3(0, 0.9f, 0);
+            var ps = aura.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = ps.main;
+            main.loop = true; main.prewarm = true;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(1.5f, 3f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.1f, 0.4f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.14f);
+            main.startColor = new Color(0.5f, 0.85f, 1f, 0.8f);
+            main.gravityModifier = -0.05f;
+            var em = ps.emission; em.rateOverTime = 30f;
+            var sh = ps.shape; sh.shapeType = ParticleSystemShapeType.Sphere; sh.radius = 0.8f;
+            aura.GetComponent<ParticleSystemRenderer>().sharedMaterial = ParticleMat();
+            var al = new GameObject("Spirit Light").AddComponent<Light>();
+            al.transform.SetParent(go.transform, false);
+            al.transform.localPosition = new Vector3(0, 1.4f, 0.8f);
+            al.type = LightType.Point; al.color = new Color(0.5f, 0.8f, 1f); al.range = 5f; al.intensity = 2f; al.shadows = LightShadows.None;
+
+            var c = go.AddComponent<CoyoteSpirit>();
+            c.head = head; c.jaw = jaw; c.tail = tail;
+            c.spiritParts = spirit.ToArray();
+            return c;
+        }
+
+        static Transform Key(Transform parent, string name, Vector3 pos)
+        {
+            var k = Empty(name, parent, pos);
+            var ring = Prim(PrimitiveType.Cylinder, "Ring", k, new Vector3(0, 0.25f, 0), new Vector3(0.28f, 0.03f, 0.28f), Gold, false);
+            ring.transform.localRotation = Quaternion.Euler(90, 0, 0);
+            Box("Shaft", k, new Vector3(0, -0.05f, 0), new Vector3(0.06f, 0.5f, 0.06f), Gold, false);
+            Box("Tooth 1", k, new Vector3(0.07f, -0.22f, 0), new Vector3(0.1f, 0.05f, 0.05f), Gold, false);
+            Box("Tooth 2", k, new Vector3(0.07f, -0.12f, 0), new Vector3(0.07f, 0.05f, 0.05f), Gold, false);
+            return k;
+        }
+
+        static Scene BuildRoom7()
+        {
+            var (scene, root, cam) = NewRoom("Room7", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.13f, 0.14f, 0.24f));
+            Shell(root, 14f, -12f, 12f);
+
+            // Mur intérieur avec la dernière porte ; l'artefact est derrière
+            Box("Inner Wall L", root, new Vector3(-4.3f, 2.5f, 6f), new Vector3(5.4f, 5f, 0.8f), Sand);
+            Box("Inner Wall R", root, new Vector3(4.3f, 2.5f, 6f), new Vector3(5.4f, 5f, 0.8f), Sand);
+            Box("Inner Wall Top", root, new Vector3(0, 4.1f, 6f), new Vector3(3.2f, 1.8f, 0.8f), Sand);
+            var door = Door(root, new Vector3(0f, 1.5f, 6f));
+            var lockPlate = Box("Lock", root, new Vector3(0.7f, 1.4f, 5.7f), new Vector3(0.35f, 0.45f, 0.08f), Glyph, false);
+            var keyInLock = Key(root, "Key In Lock", new Vector3(0.7f, 1.4f, 5.55f));
+            keyInLock.localRotation = Quaternion.Euler(-90, 0, 0);
+            keyInLock.gameObject.SetActive(false);
+
+            Prim(PrimitiveType.Cylinder, "Pedestal", root, new Vector3(0, 0.6f, 9.5f), new Vector3(1.2f, 0.6f, 1.2f), Carved);
+            Prim(PrimitiveType.Cylinder, "Pedestal Ring", root, new Vector3(0, 1.22f, 9.5f), new Vector3(1.3f, 0.04f, 1.3f), Gold, false);
+            var art = Box("Artefact", root, new Vector3(0, 1.8f, 9.5f), Vector3.one * 0.55f, Gold, false);
+            art.transform.rotation = Quaternion.Euler(45, 0, 45);
+            art.AddComponent<Spinner>();
+            var artL = new GameObject("Artefact Light").AddComponent<Light>();
+            artL.transform.SetParent(root, false);
+            artL.transform.localPosition = new Vector3(0, 2.4f, 9f);
+            artL.type = LightType.Point; artL.color = new Color(1f, 0.75f, 0.35f); artL.range = 6f; artL.intensity = 3f;
+
+            // Esprit Coyote sur son rocher
+            Prim(PrimitiveType.Sphere, "Coyote Rock", root, new Vector3(0, 0.1f, 2f), new Vector3(2.2f, 0.6f, 1.8f), DarkStone);
+            var coyote = Coyote(root, new Vector3(0, 0.35f, 2f));
+            coyote.keyProp = Key(root, "Key", new Vector3(0, 2.5f, 2f));
+
+            var photos = root.gameObject.AddComponent<PhotoPuzzle>();
+            photos.sensor = SensorKind.Camera;
+            photos.objective = "Accomplissez les 3 missions photo du Coyote";
+            photos.tutorial = "« Je suis l'esprit Coyote, gardien de l'artefact. Pour gagner ma clé, rapporte-moi trois images du monde des vivants. »\n\nLa caméra du téléphone s'ouvre : photographiez dans la vraie vie un objet de la couleur demandée, bien au centre du cadre doré.\n\nLes photos sont analysées sur le téléphone puis oubliées : rien n'est enregistré.";
+            photos.hint = "Approchez-vous d'un objet de la bonne couleur pour qu'il remplisse le cadre doré, avec assez de lumière.";
+            photos.coyote = coyote;
+            photos.fxAnchor = coyote.head;
+            photos.cameraPose = Pose("Cam Coyote", root, new Vector3(0, 2.6f, -1.5f), new Vector3(0, 1.6f, 2f));
+
+            var password = root.gameObject.AddComponent<PasswordPuzzle>();
+            password.usesSensor = false;
+            password.objective = "Répétez au Coyote son mot de passe";
+            password.tutorial = "Le Coyote veut vérifier que vous avez bien retenu son mot de passe.\n\nTouchez les syllabes dans l'ordre où il vous les a données.";
+            password.hint = "Le mot de passe est formé des 3 fragments obtenus avec les photos, dans l'ordre des missions.";
+            password.coyote = coyote; password.photos = photos;
+            password.fxAnchor = coyote.head;
+            password.cameraPose = photos.cameraPose;
+
+            var key = root.gameObject.AddComponent<KeyDoorPuzzle>();
+            key.usesSensor = false;
+            key.objective = "Ouvrez la dernière porte avec la clé";
+            key.tutorial = "Vous avez la clé dorée du Coyote. Glissez-la dans la serrure de la porte.";
+            key.hint = "Approchez-vous de la porte au fond de la salle.";
+            key.keyInLock = keyInLock; key.lockGlow = lockPlate.GetComponent<Renderer>();
+            key.fxAnchor = keyInLock;
+            key.cameraPose = Pose("Cam Door", root, new Vector3(2.5f, 3.5f, 0.5f), new Vector3(0, 1.8f, 6f));
+
+            Relic(root, new Vector3(-6f, 0.8f, -10.5f));
+            Relic(root, new Vector3(6f, 0.8f, -6f));
+            Relic(root, new Vector3(-6f, 0.8f, 3f));
+            SpikeTrap(root, new Vector3(0, 0, -6f), new Vector2(14f, 1.6f), 0f, 3f);
+
+            foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-3f, 2.6f, 5.5f), new Vector3(3f, 2.6f, 5.5f) })
+                Torch(root, t);
+
+            var exit = Exit(root, new Vector3(0f, 0f, 8.6f));
+            var st1 = MakeStation(root, "Coyote", new Vector3(0f, 0f, -0.5f), photos);
+            var st3 = MakeStation(root, "Porte", new Vector3(0f, 0f, 4.6f), key);
+            var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
+            FollowCamera(cam, player);
+            AddRoomManager(root, 6, door, exit, new PuzzleStep[] { photos, password, key }, new[] { st1, null, st3 });
             return scene;
         }
     }

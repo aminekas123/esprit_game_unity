@@ -12,13 +12,22 @@ EditorBuildSettings:
     path: Assets/LostTemple/Scenes/Room1_Entree.unity
     guid: 49890f00b019c4dfcb0fcb1a2a356a7d
   - enabled: 1
-    path: Assets/LostTemple/Scenes/Room2_Labyrinthe.unity
-    guid: f3c7ae68f7a5e4eb9971c75014a07aca
+    path: Assets/LostTemple/Scenes/Room2_Boussole.unity
+    guid: ec8f7520739f447668b416b281be6a36
   - enabled: 1
-    path: Assets/LostTemple/Scenes/Room3_Gardien.unity
-    guid: e7389cd0cad824a549562b338a611406
+    path: Assets/LostTemple/Scenes/Room3_Statues.unity
+    guid: 3a9b1139d0a5043cfbc02900178bbf06
   - enabled: 1
-    path: Assets/LostTemple/Scenes/Room4_Artefact.unity
-    guid: 3a42cbb7722634f35b710db9e6c3c0b0
+    path: Assets/LostTemple/Scenes/Room4_Monstre.unity
+    guid: 4dad1639c48754e1880b8b8a5137193e
+  - enabled: 1
+    path: Assets/LostTemple/Scenes/Room5_Runes.unity
+    guid: f703219b502854400823b8531d55f814
+  - enabled: 1
+    path: Assets/LostTemple/Scenes/Room6_Lumiere.unity
+    guid: 4799c8e38983445a69050acb17570312
+  - enabled: 1
+    path: Assets/LostTemple/Scenes/Room7_Coyote.unity
+    guid: ff74570cc01e741af93a7d6cee40ee7e
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace LostTemple
 {
-    public enum Sfx { Click, Success, Fail, Mechanism, Reveal, Victory, Tick }
+    public enum Sfx { Click, Success, Fail, Mechanism, Reveal, Victory, Tick, Roar, Shutter }
 
     /// <summary>
     /// Musique d'ambiance et retours sonores. Les sons sont synthétisés au démarrage (aucun fichier audio requis) ;
@@ -13,7 +13,7 @@ namespace LostTemple
         public static AudioManager Instance { get; private set; }
 
         public AudioClip ambientOverride;
-        public AudioClip[] sfxOverrides = new AudioClip[7];
+        public AudioClip[] sfxOverrides = new AudioClip[9];
 
         AudioSource ambient, sfx, loop;
         AudioClip[] clips;
@@ -36,7 +36,7 @@ namespace LostTemple
             loop = gameObject.AddComponent<AudioSource>();
             loop.loop = true; loop.volume = 0f;
 
-            clips = new AudioClip[7];
+            clips = new AudioClip[9];
             clips[(int)Sfx.Click] = Tone("click", new[] { 880f }, 0.06f, 0.25f);
             clips[(int)Sfx.Success] = Tone("success", new[] { 523f, 659f, 784f, 1046f }, 0.12f, 0.35f);
             clips[(int)Sfx.Fail] = Tone("fail", new[] { 220f, 165f }, 0.18f, 0.35f, square: true);
@@ -44,6 +44,8 @@ namespace LostTemple
             clips[(int)Sfx.Reveal] = Tone("reveal", new[] { 392f, 587f, 784f }, 0.22f, 0.3f);
             clips[(int)Sfx.Victory] = Tone("victory", new[] { 523f, 659f, 784f, 659f, 784f, 1046f }, 0.18f, 0.4f);
             clips[(int)Sfx.Tick] = Tone("tick", new[] { 1320f }, 0.03f, 0.15f);
+            clips[(int)Sfx.Roar] = Roar("roar", 1.6f);
+            clips[(int)Sfx.Shutter] = Rumble("shutter", 0.12f);
             for (int i = 0; i < clips.Length && i < sfxOverrides.Length; i++)
                 if (sfxOverrides[i] != null) clips[i] = sfxOverrides[i];
 
@@ -120,6 +122,27 @@ namespace LostTemple
                 lp += ((float)rng.NextDouble() * 2f - 1f - lp) * 0.02f;               // bruit filtré passe-bas
                 float env = Mathf.Clamp01(t * 8f) * Mathf.Clamp01((len - t) * 8f);
                 data[i] = (lp * 3f + 0.25f * Mathf.Sin(2f * Mathf.PI * 55f * t)) * env * 0.5f;
+            }
+            var c = AudioClip.Create(name, data.Length, 1, Rate, false);
+            c.SetData(data, 0);
+            return c;
+        }
+
+        /// <summary>Rugissement : grondement grave modulé + bruit, avec une attaque brutale.</summary>
+        static AudioClip Roar(string name, float len)
+        {
+            var data = new float[(int)(Rate * len)];
+            var rng = new System.Random(11);
+            float lp = 0f, ph = 0f;
+            for (int i = 0; i < data.Length; i++)
+            {
+                float t = i / (float)Rate;
+                float env = Mathf.Clamp01(t * 12f) * Mathf.Pow(1f - t / len, 1.5f);
+                float f = 70f + 40f * Mathf.Sin(t * 7f) - 25f * t;
+                ph += 2f * Mathf.PI * f / Rate;
+                lp += ((float)rng.NextDouble() * 2f - 1f - lp) * 0.08f;
+                float growl = Mathf.Sin(ph) * (0.6f + 0.4f * Mathf.Sin(t * 60f)) + Mathf.Sign(Mathf.Sin(ph * 0.5f)) * 0.25f;
+                data[i] = (growl * 0.6f + lp * 2.5f) * env * 0.6f;
             }
             var c = AudioClip.Create(name, data.Length, 1, Rate, false);
             c.SetData(data, 0);

@@ -19,10 +19,9 @@ namespace LostTemple
         public Station[] stations;
         [Tooltip("Porte qui descend dans le sol quand la salle est terminée.")]
         public Transform door;
+        [Tooltip("Effets d'ouverture (poussière, gravats, lumière). Optionnel.")]
+        public DoorFX doorFx;
         public ExitTrigger exit;
-        [Tooltip("Plaque où le symbole découvert s'affiche (optionnel).")]
-        public TextMesh symbolText;
-        public Renderer symbolPlate;
         [Tooltip("Étincelles jouées à chaque réussite (optionnel).")]
         public ParticleSystem sparks;
         public float hintDelay = 25f;
@@ -45,7 +44,6 @@ namespace LostTemple
 
         IEnumerator Start()
         {
-            if (symbolText != null) symbolText.text = "";
             if (exit != null) exit.gameObject.SetActive(false);
             RelicsTotal = FindObjectsByType<Relic>(FindObjectsSortMode.None).Length;
             foreach (var s in steps) { s.Completed += OnStepCompleted; s.Progressed += OnProgress; }
@@ -87,7 +85,7 @@ namespace LostTemple
                 if (RelicsTotal > 0)
                     sb.Append(RelicsFound >= RelicsTotal ? "<color=#7BD88F>✓ " : "<color=#C9B27A>◆ ")
                       .Append("Reliques : ").Append(RelicsFound).Append("/").Append(RelicsTotal).Append("</color>\n");
-                if (roomDone && roomIndex < 3) sb.Append("<color=#F2B847>▶ Franchissez la porte</color>");
+                if (roomDone) sb.Append("<color=#F2B847>▶ ").Append(IsLastRoom ? "Récupérez l'artefact" : "Franchissez la porte").Append("</color>");
                 return sb.ToString();
             }
         }
@@ -97,11 +95,13 @@ namespace LostTemple
         {
             get
             {
-                if (roomDone) return roomIndex < 3 ? "La porte est ouverte : sortez de la salle" : "";
+                if (roomDone) return IsLastRoom ? "La porte est ouverte : allez chercher l'artefact !" : "La porte est ouverte : sortez de la salle";
                 var s = NextStepToReach;
                 return s != null ? "Rejoignez le faisceau doré : " + char.ToLower(s.objective[0]) + s.objective.Substring(1) : "";
             }
         }
+
+        bool IsLastRoom => roomIndex == GameManager.RoomScenes.Length - 1;
 
         public void CollectRelic(Vector3 pos)
         {
@@ -109,7 +109,7 @@ namespace LostTemple
             GameManager.Instance.AddRelic();
             AudioManager.Instance.Play(Sfx.Reveal);
             Burst(pos, 25);
-            UIManager.Instance.ShowToast($"Relique trouvée ! ({RelicsFound}/{RelicsTotal})");
+            UIManager.Instance.ShowToast($"Relique trouvée : +1 vie ! ({GameManager.Instance.Lives} vies)");
             OnProgress();
         }
 
@@ -206,46 +206,25 @@ namespace LostTemple
         {
             roomDone = true;
             UIManager.Instance.SetStep(null);
-            var gm = GameManager.Instance;
-            int glyph = roomIndex < gm.Code.Length ? gm.Code[roomIndex] : -1;
+            var p = PlayerController.Instance;
+            if (p != null) p.Frozen = true;
 
-            if (door != null)
+            if (doorFx != null) yield return doorFx.Open();
+            else if (door != null)
             {
                 AudioManager.Instance.Play(Sfx.Mechanism);
                 CameraRig.Shake(0.15f);
-                Burst(door.position + Vector3.up * 1.5f, 60);
                 Vector3 a = door.position, b = a + Vector3.down * (door.lossyScale.y + 0.1f);
                 for (float t = 0; t < 1f; t += Time.deltaTime / 1.6f)
                 {
-                    door.position = Vector3.Lerp(a, b, Mathf.SmoothStep(0, 1, t)) + Random.insideUnitSphere * 0.02f * (1 - t);
+                    door.position = Vector3.Lerp(a, b, Mathf.SmoothStep(0, 1, t));
                     yield return null;
                 }
-                door.position = b;
             }
+            if (door != null) Burst(door.position + Vector3.up * 3f, 60);
             if (exit != null) exit.gameObject.SetActive(true);
-
-            if (glyph >= 0 && roomIndex < 3)
-            {
-                if (symbolText != null)
-                {
-                    symbolText.text = GameManager.GlyphNames[glyph];
-                    symbolText.color = GameManager.GlyphColors[glyph];
-                }
-                if (symbolPlate != null)
-                {
-                    var m = symbolPlate.material;
-                    m.EnableKeyword("_EMISSION");
-                    m.SetColor("_EmissionColor", GameManager.GlyphColors[glyph] * 2f);
-                }
-                AudioManager.Instance.Play(Sfx.Reveal);
-                yield return new WaitForSeconds(0.4f);
-                string relics = RelicsFound < RelicsTotal ? $"\n\n<size=34>Il reste {RelicsTotal - RelicsFound} relique(s) dans cette salle.</size>" : "";
-                var p = PlayerController.Instance;
-                if (p != null) p.Frozen = true;
-                UIManager.Instance.ShowMessage("Symbole découvert",
-                    $"Symbole n°{roomIndex + 1} : <b><color=#{ColorUtility.ToHtmlStringRGB(GameManager.GlyphColors[glyph])}>{GameManager.GlyphNames[glyph]}</color></b>\n\nRetenez-le : la salle de l'artefact vous demandera les symboles dans l'ordre.\n\nLa porte est ouverte, franchissez-la." + relics,
-                    "Continuer", () => { if (p != null) p.Frozen = false; });
-            }
+            if (p != null) p.Frozen = false;
+            UIManager.Instance.ShowRoomTitle(IsLastRoom ? "La dernière porte est ouverte !" : "Salle terminée !");
         }
 
         public void OnExitReached()
