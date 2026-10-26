@@ -20,11 +20,13 @@ namespace LostTemple
         const int Rate = 44100;
 
         public float Volume { get; private set; } = 0.8f;
+        public bool Haptics { get; private set; } = true;
 
         void Awake()
         {
             Instance = this;
             Volume = PlayerPrefs.GetFloat("LT_Volume", 0.8f);
+            Haptics = PlayerPrefs.GetInt("LT_Haptics", 1) == 1;
             AudioListener.volume = Volume;
 
             ambient = gameObject.AddComponent<AudioSource>();
@@ -58,7 +60,25 @@ namespace LostTemple
             PlayerPrefs.SetFloat("LT_Volume", Volume);
         }
 
-        public void Play(Sfx s, float volume = 1f) => sfx.PlayOneShot(clips[(int)s], volume);
+        public void SetHaptics(bool v)
+        {
+            Haptics = v;
+            PlayerPrefs.SetInt("LT_Haptics", v ? 1 : 0);
+        }
+
+        public void Play(Sfx s, float volume = 1f)
+        {
+            sfx.PlayOneShot(clips[(int)s], volume);
+            if (s == Sfx.Success || s == Sfx.Fail || s == Sfx.Victory) Vibrate();
+        }
+
+        /// <summary>Retour haptique sur les réussites et les échecs (Android/iOS uniquement).</summary>
+        public void Vibrate()
+        {
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
+            if (Haptics) Handheld.Vibrate();
+#endif
+        }
 
         /// <summary>Son continu (grondement) dont le volume suit la progression d'une énigme (0..1).</summary>
         public void SetLoopIntensity(float v)

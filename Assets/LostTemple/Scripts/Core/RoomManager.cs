@@ -18,6 +18,8 @@ namespace LostTemple
         [Tooltip("Plaque où le symbole découvert s'affiche (optionnel).")]
         public TextMesh symbolText;
         public Renderer symbolPlate;
+        [Tooltip("Étincelles jouées à chaque réussite (optionnel).")]
+        public ParticleSystem sparks;
         public float hintDelay = 25f;
 
         int stepIndex = -1;
@@ -94,7 +96,15 @@ namespace LostTemple
         void OnStepCompleted(PuzzleStep s)
         {
             UIManager.Instance.HideHint();
+            if (s.fxAnchor != null) Burst(s.fxAnchor.position);
             StartCoroutine(AfterStep());
+        }
+
+        void Burst(Vector3 pos)
+        {
+            if (sparks == null) return;
+            sparks.transform.position = pos;
+            sparks.Emit(60);
         }
 
         IEnumerator AfterStep()
@@ -112,6 +122,7 @@ namespace LostTemple
             if (door != null)
             {
                 AudioManager.Instance.Play(Sfx.Mechanism);
+                Burst(door.position + Vector3.up * 1.5f);
                 Vector3 a = door.position, b = a + Vector3.down * (door.lossyScale.y + 0.1f);
                 for (float t = 0; t < 1f; t += Time.deltaTime / 1.6f)
                 {

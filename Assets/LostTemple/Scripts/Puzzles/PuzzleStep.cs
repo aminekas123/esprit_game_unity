@@ -15,6 +15,8 @@ namespace LostTemple
         public SensorKind sensor;
         [Tooltip("Décocher pour une étape purement tactile (pas de capteur ni de commande alternative).")]
         public bool usesSensor = true;
+        [Tooltip("Point où jaillissent les étincelles quand l'étape est réussie.")]
+        public Transform fxAnchor;
 
         public bool IsActive { get; private set; }
         public bool IsDone { get; private set; }

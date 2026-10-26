@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 using UnityEngine.SceneManagement;
 
 namespace LostTemple.EditorTools
@@ -32,6 +33,7 @@ namespace LostTemple.EditorTools
             System.IO.Directory.CreateDirectory(SceneDir);
             System.IO.Directory.CreateDirectory(MatDir);
             mats.Clear();
+            postProfile = null;
 
             var scenes = new List<EditorBuildSettingsScene>
             {
@@ -98,6 +100,112 @@ namespace LostTemple.EditorTools
         static Material Gold => Mat("Gold", new Color(1f, 0.76f, 0.3f), 0.85f, 0.7f, true);
         static Material Glyph => Mat("Glyph", new Color(0.12f, 0.11f, 0.12f), 0f, 0.4f, true);
         static Material Flame => Mat("Flame", new Color(1f, 0.55f, 0.15f), 0f, 0f, true);
+
+        // ================================================================== Post-traitement & particules
+
+        static VolumeProfile postProfile;
+
+        static VolumeProfile PostProfile()
+        {
+            if (postProfile != null) return postProfile;
+            string path = $"{MatDir}/LostTemplePost.asset";
+            // Toujours recréé pour que les réglages ci-dessous restent la référence.
+            AssetDatabase.DeleteAsset(path);
+            var p = ScriptableObject.CreateInstance<VolumeProfile>();
+            AssetDatabase.CreateAsset(p, path);
+
+            var bloom = p.Add<Bloom>(true);
+            bloom.threshold.Override(0.8f);
+            bloom.intensity.Override(1.4f);
+            bloom.scatter.Override(0.7f);
+            bloom.tint.Override(new Color(1f, 0.85f, 0.65f));
+
+            var vig = p.Add<Vignette>(true);
+            vig.intensity.Override(0.3f);
+            vig.smoothness.Override(0.45f);
+            vig.color.Override(new Color(0.02f, 0.02f, 0.06f));
+
+            var tone = p.Add<Tonemapping>(true);
+            tone.mode.Override(TonemappingMode.Neutral);
+
+            var color = p.Add<ColorAdjustments>(true);
+            color.postExposure.Override(0.9f);
+            color.contrast.Override(12f);
+            color.saturation.Override(8f);
+
+            foreach (var c in p.components) AssetDatabase.AddObjectToAsset(c, p);
+            EditorUtility.SetDirty(p);
+            return postProfile = p;
+        }
+
+        static Material ParticleMat()
+        {
+            string path = $"{MatDir}/Particle.mat";
+            var m = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (m != null) return m;
+            m = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit"));
+            var tex = AssetDatabase.GetBuiltinExtraResource<Texture2D>("Default-Particle.psd");
+            if (tex != null) m.SetTexture("_BaseMap", tex);
+            // Transparent additif : les étincelles et la poussière s'illuminent sans assombrir le décor.
+            m.SetFloat("_Surface", 1f);
+            m.SetFloat("_Blend", 2f);
+            m.SetFloat("_SrcBlend", (float)BlendMode.SrcAlpha);
+            m.SetFloat("_DstBlend", (float)BlendMode.One);
+            m.SetFloat("_ZWrite", 0f);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            m.renderQueue = (int)RenderQueue.Transparent;
+            m.SetColor("_BaseColor", Color.white);
+            AssetDatabase.CreateAsset(m, path);
+            return m;
+        }
+
+        static void Dust(Transform root, Vector3 center, Vector3 size)
+        {
+            var go = new GameObject("Dust");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = center;
+            var ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = ps.main;
+            main.loop = true; main.prewarm = true;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(6f, 10f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.02f, 0.08f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.03f, 0.08f);
+            main.startColor = new Color(1f, 0.8f, 0.55f, 0.35f);
+            main.maxParticles = 300;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            var em = ps.emission; em.rateOverTime = 25f;
+            var sh = ps.shape; sh.shapeType = ParticleSystemShapeType.Box; sh.scale = size;
+            var noise = ps.noise; noise.enabled = true; noise.strength = 0.08f; noise.frequency = 0.3f;
+            var col = ps.colorOverLifetime; col.enabled = true;
+            var g = new Gradient();
+            g.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                      new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.3f), new GradientAlphaKey(0f, 1f) });
+            col.color = g;
+            go.GetComponent<ParticleSystemRenderer>().sharedMaterial = ParticleMat();
+        }
+
+        static ParticleSystem Sparks(Transform root)
+        {
+            var go = new GameObject("Sparks");
+            go.transform.SetParent(root, false);
+            var ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            var main = ps.main;
+            main.loop = false; main.playOnAwake = false;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.6f, 1.4f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f, 5f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.05f, 0.15f);
+            main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.85f, 0.4f), new Color(1f, 0.5f, 0.15f));
+            main.gravityModifier = 0.6f;
+            main.maxParticles = 400;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            var em = ps.emission; em.rateOverTime = 0f;
+            var sh = ps.shape; sh.shapeType = ParticleSystemShapeType.Sphere; sh.radius = 0.3f;
+            var size = ps.sizeOverLifetime; size.enabled = true; size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0, 1, 1, 0));
+            go.GetComponent<ParticleSystemRenderer>().sharedMaterial = ParticleMat();
+            return ps;
+        }
 
         // ================================================================== Primitives
 
@@ -180,6 +288,13 @@ namespace LostTemple.EditorTools
             c.farClipPlane = 80f;
             cam.AddComponent<AudioListener>();
             cam.AddComponent<CameraSway>().amplitude = 0.08f;
+            var camData = cam.AddComponent<UniversalAdditionalCameraData>();
+            camData.renderPostProcessing = true;
+            camData.antialiasing = AntialiasingMode.FastApproximateAntialiasing;
+
+            var vol = new GameObject("Post Processing").AddComponent<Volume>();
+            vol.isGlobal = true;
+            vol.sharedProfile = PostProfile();
 
             var sun = new GameObject("Moonlight");
             sun.transform.rotation = Quaternion.Euler(55f, -30f, 0f);
@@ -220,7 +335,9 @@ namespace LostTemple.EditorTools
 
         static RoomManager AddRoomManager(Transform root, int index, Transform door, TextMesh text, Renderer plate, params PuzzleStep[] steps)
         {
+            Dust(root, new Vector3(0, 2.5f, 1f), new Vector3(11f, 4f, 13f));
             var rm = root.gameObject.AddComponent<RoomManager>();
+            rm.sparks = Sparks(root);
             rm.roomIndex = index;
             rm.door = door; rm.symbolText = text; rm.symbolPlate = plate;
             rm.steps = steps;
@@ -250,6 +367,7 @@ namespace LostTemple.EditorTools
             al.type = LightType.Point; al.color = new Color(1f, 0.75f, 0.35f); al.range = 6f; al.intensity = 4f;
             Torch(root, new Vector3(-2.6f, 2.6f, 3.2f));
             Torch(root, new Vector3(2.6f, 2.6f, 3.2f));
+            Dust(root, new Vector3(0, 3f, 1f), new Vector3(12f, 6f, 8f));
             return scene;
         }
 
@@ -280,6 +398,12 @@ namespace LostTemple.EditorTools
                 Torch(root, new Vector3(p.x, 1.1f, p.z));
             }
 
+            // Piège : barre qui tourne au-dessus du dernier pont
+            Prim(PrimitiveType.Cylinder, "Sweeper Axis", root, new Vector3(2, 0.45f, 3f), new Vector3(0.35f, 0.25f, 0.35f), Gold, false);
+            var sweeper = Box("Sweeper", root, new Vector3(2, 0.5f, 3f), new Vector3(2.4f, 0.25f, 0.22f), Carved);
+            sweeper.AddComponent<Rigidbody>();
+            sweeper.AddComponent<Sweeper>().speed = 55f;
+
             var door = Door(root, new Vector3(2, 1.5f, 7.3f), out var symText, out var plate);
 
             var spawn = Empty("Spawn", root, new Vector3(0, 0.6f, -6f));
@@ -294,7 +418,8 @@ namespace LostTemple.EditorTools
             puzzle.sensor = SensorKind.Accelerometer;
             puzzle.objective = "Guidez la boule d'or jusqu'à la plaque lumineuse";
             puzzle.tutorial = "Tenez le téléphone devant vous, comme pour lire.\n\nInclinez-le doucement vers l'avant, l'arrière, la gauche ou la droite : la boule roule dans ce sens.\n\nSi elle tombe, elle revient au départ.";
-            puzzle.hint = "Faites de petits mouvements et redressez le téléphone pour freiner avant chaque virage.";
+            puzzle.hint = "Faites de petits mouvements et redressez le téléphone pour freiner. Attendez que la barre tournante soit passée avant de traverser.";
+            puzzle.fxAnchor = goalPlate.transform;
             puzzle.ball = rb; puzzle.spawn = spawn; puzzle.goal = goal.GetComponent<Collider>(); puzzle.goalPlate = goalPlate;
             goal.AddComponent<GoalTrigger>().puzzle = puzzle;
 
@@ -326,6 +451,7 @@ namespace LostTemple.EditorTools
             compass.objective = "Trouvez la direction du passage secret";
             compass.tutorial = "L'aiguille magique indique de quel côté tourner.\n\nTenez le téléphone à plat ou droit devant vous et tournez sur vous-même lentement, jusqu'à ce que l'aiguille pointe vers le fond de la salle et devienne dorée.\n\nRestez immobile un instant.";
             compass.hint = "Tournez dans le sens où pointe l'aiguille. Éloignez-vous des objets métalliques et des aimants (coques).";
+            compass.fxAnchor = needle;
             compass.needle = needle; compass.needleGem = gem.GetComponent<Renderer>(); compass.passageWall = passage;
 
             // Statues
@@ -336,6 +462,7 @@ namespace LostTemple.EditorTools
             statueAlign.hint = "Tournez lentement le téléphone vers la gauche ou la droite, sans le pencher vers l'avant.";
             var xs = new[] { -3.5f, 0f, 3.5f };
             statueAlign.targetAngles = new[] { 60f, -90f, 150f };
+            statueAlign.fxAnchor = Empty("Statues FX", root, new Vector3(0, 1.5f, 3f));
             statueAlign.statues = new Transform[3]; statueAlign.beams = new Renderer[3]; statueAlign.targets = new Renderer[3];
             for (int i = 0; i < 3; i++)
             {
@@ -389,6 +516,7 @@ namespace LostTemple.EditorTools
             mic.hint = "Soufflez de façon continue près du bas du téléphone. Si rien ne se passe, augmentez la sensibilité du micro dans Pause.";
             mic.eyes = new[] { eyeL.GetComponent<Renderer>(), eyeR.GetComponent<Renderer>() };
             mic.guardianHead = head;
+            mic.fxAnchor = head;
 
             // Runes et cachette
             var runeMat = Mat("Rune", new Color(0.12f, 0.13f, 0.16f), 0f, 0.6f, true);
@@ -407,6 +535,7 @@ namespace LostTemple.EditorTools
             prox.tutorial = "Le capteur de proximité se trouve en haut du téléphone, près de l'écouteur.\n\nCouvrez-le avec la main, puis retirez-la. Recommencez trois fois : une rune s'allume à chaque fois.";
             prox.hint = "Passez la main à 2-3 cm au-dessus du haut de l'écran, puis éloignez-la complètement.";
             prox.runes = runes; prox.cacheLid = lidPivot;
+            prox.fxAnchor = treasure.transform;
 
             Torch(root, new Vector3(-5.4f, 2.5f, 1f));
             Torch(root, new Vector3(5.4f, 2.5f, 1f));
@@ -453,6 +582,7 @@ namespace LostTemple.EditorTools
             light.objective = "Révélez le dernier symbole gravé sur le mur";
             light.tutorial = "Le dernier symbole n'apparaît qu'avec un changement de lumière.\n\nCouvrez le haut de l'écran avec la main pour faire l'obscurité, ou éclairez-le avec une lampe, et maintenez quelques secondes.";
             light.hint = "Le capteur de lumière est près de la caméra avant. Couvrez-le complètement ou approchez-le d'une lampe.";
+            light.fxAnchor = wallGlyph.transform;
             light.hiddenSymbol = hidden; light.wallGlyph = wallGlyph; light.revealLight = rl;
 
             var code = root.gameObject.AddComponent<CodePuzzle>();
@@ -460,6 +590,7 @@ namespace LostTemple.EditorTools
             code.objective = "Touchez les 4 symboles dans l'ordre des salles";
             code.tutorial = "Chaque salle vous a révélé un symbole. Touchez-les dans l'ordre : salle 1, salle 2, salle 3, puis celui du mur.\n\nUne erreur remet la séquence à zéro.";
             code.hint = "Le 4e symbole est celui qui vient d'apparaître sur le mur.";
+            code.fxAnchor = art.transform;
             code.artefact = art.transform; code.artefactRenderer = art.GetComponent<Renderer>(); code.artefactLight = al;
 
             Torch(root, new Vector3(-5.4f, 2.5f, 1f));

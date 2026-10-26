@@ -33,11 +33,10 @@ namespace LostTemple
         GameObject continueButton;
         GameObject settingsBackTarget;
         Slider sensSlider, micSlider, volSlider;
-        Text altToggleText;
+        Text altToggleText, hapticsToggleText;
 
         PuzzleStep step;
         Coroutine toastRoutine, titleRoutine;
-        float startTime;
 
         void Awake()
         {
@@ -54,7 +53,6 @@ namespace LostTemple
             BuildToast();
             HideAll();
             GameManager.Instance.StateChanged += OnStateChanged;
-            GameManager.Instance.RoomLoaded += _ => { if (GameManager.Instance.CurrentRoom == 0) startTime = Time.time; };
         }
 
         void HideAll(bool keepGameplayOverlays = false)
@@ -88,8 +86,10 @@ namespace LostTemple
                     RefreshSettings();
                     break;
                 case GameState.Victory:
-                    float t = Time.time - startTime;
-                    victoryText.text = $"Vous avez récupéré l'artefact et échappé au temple.\n\nTemps : {(int)t / 60} min {(int)t % 60:00} s";
+                    var gm = GameManager.Instance;
+                    float t = Time.time - gm.RunStartTime;
+                    string stars = "<color=#F2B847>" + new string('★', gm.Stars) + "</color><color=#555A70>" + new string('★', 3 - gm.Stars) + "</color>";
+                    victoryText.text = $"<size=110>{stars}</size>\n\nVous avez récupéré l'artefact et échappé au temple.\n\nTemps : {(int)t / 60} min {(int)t % 60:00} s\nIndices utilisés : {gm.Hints}\nChutes de la boule : {gm.Falls}";
                     victory.SetActive(true);
                     break;
             }
@@ -251,6 +251,8 @@ namespace LostTemple
             volSlider = MakeSlider(parent, "Volume", 0f, 1f, AudioManager.Instance.Volume, AudioManager.Instance.SetVolume);
             var alt = MakeButton(parent, "", () => { sm.SetForceAlternative(!sm.ForceAlternative); RefreshSettings(); SetStep(step); });
             altToggleText = alt.GetComponentInChildren<Text>();
+            var hap = MakeButton(parent, "", () => { AudioManager.Instance.SetHaptics(!AudioManager.Instance.Haptics); RefreshSettings(); });
+            hapticsToggleText = hap.GetComponentInChildren<Text>();
             MakeButton(parent, "Recalibrer l'inclinaison (tenez le téléphone normalement)", () => { sm.CalibrateTilt(); ShowToast("Position neutre enregistrée"); }, 150);
             RefreshSettings();
         }
@@ -259,6 +261,7 @@ namespace LostTemple
         {
             var sm = SensorManager.Instance;
             altToggleText.text = "Commandes alternatives : " + (sm.ForceAlternative ? "<color=#F2B847>OUI</color>" : "NON");
+            hapticsToggleText.text = "Vibrations : " + (AudioManager.Instance.Haptics ? "<color=#F2B847>OUI</color>" : "NON");
             sensSlider.SetValueWithoutNotify(sm.Sensitivity);
             micSlider.SetValueWithoutNotify(sm.MicSensitivity);
             volSlider.SetValueWithoutNotify(AudioManager.Instance.Volume);
@@ -332,7 +335,7 @@ namespace LostTemple
             t.fontStyle = FontStyle.Bold;
             Size(t, 140);
             victoryText = Label(card, "", 44);
-            Size(victoryText, 220);
+            Size(victoryText, 480);
             MakeButton(card, "Rejouer", () => GameManager.Instance.NewGame(), 140, new Color(0.55f, 0.38f, 0.1f));
             MakeButton(card, "Menu principal", () => GameManager.Instance.GoToMenu());
         }
@@ -423,6 +426,7 @@ namespace LostTemple
 
         public void ShowHint(string hint)
         {
+            if (!hintBox.activeSelf) GameManager.Instance.AddHint();
             hintText.text = "Indice : " + hint;
             hintBox.SetActive(true);
         }

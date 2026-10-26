@@ -36,6 +36,7 @@ namespace LostTemple
             if (ball.position.y < killY)
             {
                 falls++;
+                GameManager.Instance.AddFall();
                 Audio.Play(Sfx.Fail);
                 UIManager.Instance.ShowToast(falls < 3 ? "La boule est tombée… elle revient au départ." : "Astuce : réduisez la sensibilité dans Pause.");
                 Respawn();

@@ -32,6 +32,16 @@ namespace LostTemple
         public int[] Code { get; private set; } = new int[4];
         public int UnlockedRoom => PlayerPrefs.GetInt("LT_Room", 0);
 
+        // Statistiques de la partie en cours (affichées sur l'écran de victoire)
+        public float RunStartTime { get; private set; }
+        public int Hints { get; private set; }
+        public int Falls { get; private set; }
+        public void AddHint() => Hints++;
+        public void AddFall() => Falls++;
+
+        /// <summary>1 à 3 étoiles : une de perdue au-delà de 3 indices, une autre au-delà de 15 minutes.</summary>
+        public int Stars => 3 - (Hints > 3 ? 1 : 0) - (Time.time - RunStartTime > 900f ? 1 : 0);
+
         public event Action<GameState> StateChanged;
         public event Action<int> RoomLoaded;
 
@@ -101,12 +111,24 @@ namespace LostTemple
         public void NewGame()
         {
             NewCode();
+            ResetStats();
             PlayerPrefs.SetInt("LT_Room", 0);
             PlayerPrefs.Save();
             LoadRoom(0);
         }
 
-        public void ContinueGame() => LoadRoom(Mathf.Clamp(UnlockedRoom, 0, RoomScenes.Length - 1));
+        public void ContinueGame()
+        {
+            ResetStats();
+            LoadRoom(Mathf.Clamp(UnlockedRoom, 0, RoomScenes.Length - 1));
+        }
+
+        void ResetStats()
+        {
+            RunStartTime = Time.time;
+            Hints = 0;
+            Falls = 0;
+        }
 
         public void LoadRoom(int index)
         {
