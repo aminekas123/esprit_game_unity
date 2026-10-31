@@ -7,7 +7,7 @@ namespace LostTemple
     /// Rocher géant qui se met à rouler derrière l'explorateur quand la salle est terminée :
     /// il faut courir jusqu'à la porte. S'il rattrape l'explorateur, il le renvoie en arrière et repart.
     /// </summary>
-    public class Boulder : MonoBehaviour
+    public class Boulder : MonoBehaviour, IRoomDoneListener
     {
         public static bool Rolling { get; private set; }
 
@@ -26,6 +26,8 @@ namespace LostTemple
 
         void OnDestroy() { Rolling = false; }
 
+        public void OnRoomDone() => StartChase();
+
         public void StartChase()
         {
             StartCoroutine(Chase());
@@ -38,6 +40,7 @@ namespace LostTemple
             rock.gameObject.SetActive(true);
             Place(p.transform.position.z - 8f);
             Rolling = true;
+            AudioManager.Instance.Tension = 1f;
             AudioManager.Instance.Play(Sfx.Roar, 0.5f);
             CameraRig.Shake(0.4f);
             UIManager.Instance.ShowRoomTitle("Un rocher géant ! Courez jusqu'à la porte !");
@@ -63,6 +66,7 @@ namespace LostTemple
                 yield return null;
             }
             Rolling = false;
+            AudioManager.Instance.Tension = 0f;
             AudioManager.Instance.SetLoopIntensity(0f);
             AudioManager.Instance.Play(Sfx.Mechanism);
             CameraRig.Shake(0.5f);

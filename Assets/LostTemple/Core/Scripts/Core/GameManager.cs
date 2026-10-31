@@ -15,14 +15,25 @@ namespace LostTemple
         public static GameManager Instance { get; private set; }
 
         public const string MenuScene = "MainMenu";
-        /// <summary>Une salle par capteur, puis la salle du Coyote (caméra).</summary>
-        public static readonly string[] RoomScenes =
-            { "Room1_Entree", "Room2_Boussole", "Room3_Statues", "Room4_Monstre", "Room5_Runes", "Room6_Lumiere", "Room7_Coyote" };
-        public static readonly string[] RoomTitles =
+        /// <summary>
+        /// Salles du projet, dans l'ordre des Build Settings (toutes les scènes sauf le menu).
+        /// Le jeu complet en a 7 ; un projet de module n'a que la ou les siennes.
+        /// </summary>
+        public static string[] RoomScenes
         {
-            "Salle 1 — Le pont suspendu", "Salle 2 — Le labyrinthe", "Salle 3 — Les statues", "Salle 4 — Le monstre",
-            "Salle 5 — La cachette", "Salle 6 — Le pont invisible", "Salle finale — L'esprit Coyote"
-        };
+            get
+            {
+                if (roomScenes != null) return roomScenes;
+                var list = new System.Collections.Generic.List<string>();
+                for (int i = 0; i < SceneManager.sceneCountInBuildSettings; i++)
+                {
+                    string n = System.IO.Path.GetFileNameWithoutExtension(SceneUtility.GetScenePathByBuildIndex(i));
+                    if (n != MenuScene) list.Add(n);
+                }
+                return roomScenes = list.ToArray();
+            }
+        }
+        static string[] roomScenes;
 
         /// <summary>Les six symboles du temple : nom affiché et couleur.</summary>
         public static readonly string[] GlyphNames = { "Soleil", "Lune", "Serpent", "Œil", "Étoile", "Plume" };
@@ -58,15 +69,28 @@ namespace LostTemple
 
         /// <summary>Nombre total de reliques ramassées depuis toujours (débloque les costumes).</summary>
         public int TotalRelicsEver => PlayerPrefs.GetInt("LT_TotalRelics", 0);
-        /// <summary>Pages du journal débloquées (une par salle terminée).</summary>
-        public int JournalPages => PlayerPrefs.GetInt("LT_Journal", 0);
+        /// <summary>Pages du journal débloquées (une par salle terminée), dans l'ordre de l'histoire.</summary>
+        public System.Collections.Generic.List<int> JournalPages
+        {
+            get
+            {
+                var list = new System.Collections.Generic.List<int>();
+                int mask = PlayerPrefs.GetInt("LT_JournalMask", 0);
+                for (int i = 0; i < Journal.Pages.Length; i++) if ((mask & (1 << i)) != 0) list.Add(i);
+                return list;
+            }
+        }
+
+        public void UnlockJournal(int storyIndex)
+        {
+            PlayerPrefs.SetInt("LT_JournalMask", PlayerPrefs.GetInt("LT_JournalMask", 0) | (1 << storyIndex));
+        }
 
         public float BestTime(int room) => PlayerPrefs.GetFloat("LT_Best" + room, 0f);
 
         /// <summary>Enregistre le temps d'une salle ; renvoie vrai si c'est un nouveau record.</summary>
         public bool SubmitTime(int room, float seconds)
         {
-            PlayerPrefs.SetInt("LT_Journal", Mathf.Max(JournalPages, room + 1));
             if (DemoMode) return false;
             float best = BestTime(room);
             bool record = best <= 0f || seconds < best;
@@ -114,7 +138,6 @@ namespace LostTemple
             go.AddComponent<AudioManager>();
             go.AddComponent<GameManager>();
             go.AddComponent<UIManager>();
-            go.AddComponent<AmbientLightSync>();
         }
 
         void Awake()

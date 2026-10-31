@@ -23,6 +23,8 @@ namespace LostTemple
         public bool Haptics { get; private set; } = true;
         /// <summary>Tension demandée par le jeu (boss, rocher…) : fait monter les percussions.</summary>
         public float Tension { get; set; }
+        /// <summary>Nombre de zones où le micro écoute (la musique se fait discrète).</summary>
+        public static int MicZones;
 
         // Note de base du bourdon pour le menu (-1) puis chaque salle : chaque salle a sa propre couleur.
         static readonly float[] roomRoots = { 55f, 55f, 49f, 58.27f, 43.65f, 51.91f, 46.25f, 41.2f };
@@ -84,14 +86,13 @@ namespace LostTemple
             {
                 float d = Hazard.NearestActiveDistance(p.transform.position);
                 if (d < 5f) t = Mathf.Max(t, Mathf.InverseLerp(5f, 1.5f, d) * 0.8f);
-                if (Boulder.Rolling) t = 1f;
             }
             drumVol = Mathf.Lerp(drumVol, t * 0.55f, 1f - Mathf.Exp(-3f * Time.unscaledDeltaTime));
             drums.pitch = 1f + t * 0.15f;
 
             // Pendant que le micro écoute, la musique se fait discrète pour ne pas fausser la mesure.
             var step = RoomManager.Current != null ? RoomManager.Current.ActiveStep : null;
-            bool micListening = QuietZone.Current != null || (step != null && step.IsActive && step.usesSensor && step.sensor == SensorKind.Microphone);
+            bool micListening = MicZones > 0 || (step != null && step.IsActive && step.usesSensor && step.sensor == SensorKind.Microphone);
             duck = Mathf.Lerp(duck, micListening ? 0.2f : 1f, 1f - Mathf.Exp(-4f * Time.unscaledDeltaTime));
             ambient.volume = 0.35f * duck;
             drums.volume = drumVol * duck;

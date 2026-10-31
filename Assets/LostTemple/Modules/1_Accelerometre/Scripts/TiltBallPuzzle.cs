@@ -57,6 +57,17 @@ namespace LostTemple
             bestZ = spawn.position.z;
         }
 
+        /// <summary>Plateau à trous : la boule est tombée dans un trou.</summary>
+        public void OnBallFellInHole()
+        {
+            if (!IsActive) return;
+            falls++;
+            GameManager.Instance.AddFall();
+            Audio.Play(Sfx.Fail);
+            UIManager.Instance.ShowToast("La boule est tombée dans un trou ! Contournez les cercles noirs.");
+            Respawn();
+        }
+
         public void OnBallEnteredGoal()
         {
             if (!IsActive) return;

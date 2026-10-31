@@ -23,6 +23,7 @@ namespace LostTemple.EditorTools
 
         // ================================================================== Salle 3 — Gyroscope
 
+        [RoomBuilder(2, "Room3_Statues", "2_Gyroscope")]
         static Scene BuildRoom3()
         {
             var (scene, root, cam) = NewRoom("Room3", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.15f, 0.16f, 0.25f));
@@ -58,10 +59,9 @@ namespace LostTemple.EditorTools
                 statueAlign.statues[i] = pivot; statueAlign.beams[i] = beam.GetComponent<Renderer>(); statueAlign.targets[i] = target.GetComponent<Renderer>();
             }
 
-            SpikeTrap(root, new Vector3(0, 0, 9f), new Vector2(6f, 1.6f), 0.5f, 2.6f);
             Relic(root, new Vector3(-6f, 0.8f, -10.5f));
             Relic(root, new Vector3(6f, 0.8f, -6f));
-            Relic(root, new Vector3(6f, 0.8f, 10.5f));
+            Relic(root, new Vector3(6f, 0.8f, 7.5f));
 
             foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-6.7f, 2.6f, 10f), new Vector3(6.7f, 2.6f, 10f) })
                 Torch(root, t);
@@ -72,8 +72,53 @@ namespace LostTemple.EditorTools
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true);
             FollowCamera(cam, player);
             Secret(root, new Vector3(-5.5f, 0.9f, 8f), 2);
-            var rm3 = AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign }, new[] { st });
-            rm3.boulder = MakeBoulder(root, 9.4f);
+
+            // Amélioration : miroirs à orienter pour guider un rayon de lumière jusqu'au cristal
+            var mirrorMat = Mat("Mirror", new Color(0.85f, 0.9f, 0.95f), 1f, 0.95f);
+            var ringMat = Mat("MirrorRing", new Color(0.2f, 0.18f, 0.12f), 0.3f, 0.5f, true);
+            var mirrors = new Transform[2];
+            var rings = new Renderer[2];
+            var mirrorPos = new[] { new Vector3(-3.5f, 0f, 7.5f), new Vector3(-3.5f, 0f, 10.5f) };
+            var mirrorYaw = new[] { 25f, 100f };
+            for (int i = 0; i < 2; i++)
+            {
+                Prim(PrimitiveType.Cylinder, "Mirror Base", root, mirrorPos[i] + new Vector3(0, 0.15f, 0), new Vector3(0.9f, 0.15f, 0.9f), Carved);
+                rings[i] = Prim(PrimitiveType.Cylinder, "Mirror Ring", root, mirrorPos[i] + new Vector3(0, 0.31f, 0), new Vector3(1.1f, 0.01f, 1.1f), ringMat, false).GetComponent<Renderer>();
+                var pivot = Empty("Mirror " + (i + 1), root, mirrorPos[i]);
+                pivot.rotation = Quaternion.Euler(0, mirrorYaw[i], 0);
+                Box("Mirror Glass", pivot, new Vector3(0, 1.3f, 0), new Vector3(1.3f, 1.4f, 0.08f), mirrorMat);
+                Box("Mirror Frame", pivot, new Vector3(0, 1.3f, -0.06f), new Vector3(1.45f, 1.55f, 0.05f), Gold, false);
+                mirrors[i] = pivot;
+            }
+            var source = Empty("Beam Source", root, new Vector3(-6.3f, 1.3f, 7.5f));
+            source.rotation = Quaternion.LookRotation(Vector3.right);
+            Box("Beam Emitter", root, new Vector3(-6.55f, 1.3f, 7.5f), new Vector3(0.4f, 0.4f, 0.4f), FlameLit, false);
+            var crystal = Box("Beam Crystal", root, new Vector3(5.6f, 1.3f, 10.5f), new Vector3(0.5f, 0.9f, 0.5f), Mat("CrystalTarget", new Color(0.9f, 0.8f, 0.5f), 0.3f, 0.95f, true));
+            crystal.transform.rotation = Quaternion.Euler(0, 45, 0);
+            Prim(PrimitiveType.Cylinder, "Crystal Base", root, new Vector3(5.6f, 0.4f, 10.5f), new Vector3(0.8f, 0.4f, 0.8f), Carved);
+            var beamGo = new GameObject("Beam");
+            beamGo.transform.SetParent(root, false);
+            var lr = beamGo.AddComponent<LineRenderer>();
+            lr.sharedMaterial = MarkerMat();
+            lr.widthMultiplier = 0.08f;
+            lr.useWorldSpace = true;
+            lr.startColor = lr.endColor = new Color(1f, 0.85f, 0.45f, 1f);
+            lr.positionCount = 0;
+
+            var mirrorsPuzzle = root.gameObject.AddComponent<MirrorBeamPuzzle>();
+            mirrorsPuzzle.sensor = SensorKind.Gyroscope;
+            mirrorsPuzzle.objective = "Guidez le rayon de lumière jusqu'au cristal avec les miroirs";
+            mirrorsPuzzle.tutorial = "Un rayon jaillit du mur. Faites pivoter le téléphone comme un volant : le miroir sélectionné (anneau doré) tourne avec lui.\n\nUtilisez le bouton « Miroir suivant » pour changer de miroir. Quand le rayon touche le cristal, gardez-le une seconde.";
+            mirrorsPuzzle.hint = "Le premier miroir doit renvoyer le rayon vers le fond de la salle, le second vers le cristal à droite.";
+            mirrorsPuzzle.source = source; mirrorsPuzzle.mirrors = mirrors; mirrorsPuzzle.mirrorHighlights = rings;
+            mirrorsPuzzle.target = crystal.GetComponent<Collider>(); mirrorsPuzzle.targetRenderer = crystal.GetComponent<Renderer>();
+            mirrorsPuzzle.beam = lr;
+            mirrorsPuzzle.fxAnchor = crystal.transform;
+            mirrorsPuzzle.cameraPose = Pose("Cam Mirrors", root, new Vector3(0f, 9.5f, 3.5f), new Vector3(0f, 1f, 9f));
+            var st2 = MakeStation(root, "Miroirs", new Vector3(-1.2f, 0f, 6.8f), mirrorsPuzzle);
+
+            var rm3 = AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign, mirrorsPuzzle }, new[] { st, st2 });
+            rm3.roomDoneListeners = new MonoBehaviour[] { MakeBoulder(root, 9.4f) };
             return scene;
         }
     }

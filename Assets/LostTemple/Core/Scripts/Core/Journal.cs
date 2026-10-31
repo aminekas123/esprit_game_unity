@@ -6,6 +6,13 @@ namespace LostTemple
     /// </summary>
     public static class Journal
     {
+        /// <summary>Titre de chaque salle de l'histoire complète (index = storyIndex du RoomManager).</summary>
+        public static readonly string[] RoomTitles =
+        {
+            "Salle 1 — Le pont suspendu", "Salle 2 — Le labyrinthe", "Salle 3 — Les statues", "Salle 4 — Le monstre",
+            "Salle 5 — La cachette", "Salle 6 — Le pont invisible", "Salle finale — L'esprit Coyote"
+        };
+
         public static readonly string[] Pages =
         {
             "Jour 1. La dalle s'est refermée derrière moi : impossible de ressortir par là où je suis entré. Le pont suspendu n'a cédé qu'à la boule d'or… Les anciens savaient que l'équilibre ouvre les portes.\n\n<i>On raconte que le labyrinthe garde un trésor pour ceux qui osent tout renverser.</i>",

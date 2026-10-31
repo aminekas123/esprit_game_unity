@@ -18,13 +18,28 @@ namespace LostTemple
         bool inside;
         bool micAsked;
 
+        HudGauge gauge;
+
         void Start() { GetComponent<Collider>().isTrigger = true; }
 
-        void OnDisable() { if (Current == this) Current = null; }
+        void OnEnable()
+        {
+            gauge = new HudGauge { label = "Bruit — restez silencieux", color = new Color(0.9f, 0.25f, 0.15f), value = () => Noise01, visible = () => inside };
+            HudGauge.Register(gauge);
+        }
+
+        void OnDisable()
+        {
+            HudGauge.Unregister(gauge);
+            if (inside) AudioManager.MicZones--;
+            inside = false;
+            if (Current == this) Current = null;
+        }
 
         void OnTriggerEnter(Collider other)
         {
             if (other.GetComponentInParent<PlayerController>() == null) return;
+            if (!inside) AudioManager.MicZones++;
             inside = true;
             Current = this;
             var sm = SensorManager.Instance;
@@ -39,6 +54,7 @@ namespace LostTemple
         void OnTriggerExit(Collider other)
         {
             if (other.GetComponentInParent<PlayerController>() == null) return;
+            if (inside) AudioManager.MicZones--;
             inside = false;
             if (Current == this) Current = null;
             Noise01 = 0f;

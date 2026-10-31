@@ -13,7 +13,11 @@ namespace LostTemple
     {
         public static RoomManager Current { get; private set; }
 
-        public int roomIndex;
+        [Tooltip("Place de la salle dans l'histoire complète (0 à 6) : titre, page du journal, relique secrète.")]
+        public int storyIndex;
+
+        /// <summary>Position de la salle dans ce projet (ordre des Build Settings).</summary>
+        int RoomIndex => GameManager.Instance != null && GameManager.Instance.CurrentRoom >= 0 ? GameManager.Instance.CurrentRoom : 0;
         public PuzzleStep[] steps;
         [Tooltip("Une station par étape, dans le même ordre.")]
         public Station[] stations;
@@ -24,8 +28,8 @@ namespace LostTemple
         public ExitTrigger exit;
         [Tooltip("Étincelles jouées à chaque réussite (optionnel).")]
         public ParticleSystem sparks;
-        [Tooltip("Rocher qui poursuit l'explorateur une fois la salle terminée (optionnel).")]
-        public Boulder boulder;
+        [Tooltip("Composants (IRoomDoneListener) prévenus quand la salle est terminée, ex. le rocher géant.")]
+        public MonoBehaviour[] roomDoneListeners;
         public float hintDelay = 25f;
 
         int stepIndex = -1;
@@ -52,7 +56,7 @@ namespace LostTemple
             foreach (var s in steps) { s.Completed += OnStepCompleted; s.Progressed += OnProgress; }
             foreach (var st in stations) if (st != null) st.SetMarker(false);
             yield return null;
-            UIManager.Instance.ShowRoomTitle(GameManager.RoomTitles[roomIndex]);
+            UIManager.Instance.ShowRoomTitle(Journal.RoomTitles[Mathf.Clamp(storyIndex, 0, Journal.RoomTitles.Length - 1)]);
             yield return new WaitForSeconds(1f);
             roomStart = Time.time;
             AdvanceStep();
@@ -89,7 +93,7 @@ namespace LostTemple
                 if (RelicsTotal > 0)
                     sb.Append(RelicsFound >= RelicsTotal ? "<color=#7BD88F>✓ " : "<color=#C9B27A>◆ ")
                       .Append("Reliques : ").Append(RelicsFound).Append("/").Append(RelicsTotal).Append("</color>\n");
-                if (roomDone) sb.Append("<color=#F2B847>▶ ").Append(IsLastRoom ? "Récupérez l'artefact" : "Franchissez la porte").Append("</color>");
+                if (roomDone) sb.Append("<color=#F2B847>▶ ").Append(HasArtefact ? "Récupérez l'artefact" : "Franchissez la porte").Append("</color>");
                 return sb.ToString();
             }
         }
@@ -99,13 +103,14 @@ namespace LostTemple
         {
             get
             {
-                if (roomDone) return IsLastRoom ? "La porte est ouverte : allez chercher l'artefact !" : "La porte est ouverte : sortez de la salle";
+                if (roomDone) return HasArtefact ? "La porte est ouverte : allez chercher l'artefact !" : "La porte est ouverte : sortez de la salle";
                 var s = NextStepToReach;
                 return s != null ? "Rejoignez le faisceau doré : " + char.ToLower(s.objective[0]) + s.objective.Substring(1) : "";
             }
         }
 
-        bool IsLastRoom => roomIndex == GameManager.RoomScenes.Length - 1;
+        bool IsLastRoom => RoomIndex == GameManager.RoomScenes.Length - 1;
+        bool HasArtefact => storyIndex == Journal.RoomTitles.Length - 1;
 
         public void CollectRelic(Vector3 pos)
         {
@@ -236,19 +241,21 @@ namespace LostTemple
 
             var gm = GameManager.Instance;
             float time = Time.time - roomStart;
-            bool record = gm.SubmitTime(roomIndex, time);
+            bool record = gm.SubmitTime(RoomIndex, time);
+            gm.UnlockJournal(storyIndex);
             string clock = $"{(int)time / 60}:{(int)time % 60:00}";
-            UIManager.Instance.ShowRoomTitle((IsLastRoom ? "La dernière porte est ouverte !" : "Salle terminée !") + $"\n<size=50>{clock}{(record ? "  ★ Nouveau record !" : "")}</size>");
+            UIManager.Instance.ShowRoomTitle((HasArtefact ? "La dernière porte est ouverte !" : "Salle terminée !") + $"\n<size=50>{clock}{(record ? "  ★ Nouveau record !" : "")}</size>");
 
-            if (!gm.DemoMode && roomIndex < Journal.Pages.Length)
+            if (!gm.DemoMode && storyIndex < Journal.Pages.Length)
             {
                 yield return new WaitForSeconds(1.5f);
                 bool closed = false;
-                UIManager.Instance.ShowMessage($"Journal de l'explorateur — page {roomIndex + 1}", Journal.Pages[roomIndex], "Continuer", () => closed = true);
+                UIManager.Instance.ShowMessage($"Journal de l'explorateur — page {storyIndex + 1}", Journal.Pages[storyIndex], "Continuer", () => closed = true);
                 while (!closed) yield return null;
             }
             if (p != null) p.Frozen = false;
-            if (boulder != null) boulder.StartChase();
+            if (roomDoneListeners != null)
+                foreach (var l in roomDoneListeners) if (l is IRoomDoneListener rl) rl.OnRoomDone();
         }
 
         public void OnExitReached()

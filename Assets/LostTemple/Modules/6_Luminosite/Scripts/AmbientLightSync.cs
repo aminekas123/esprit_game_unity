@@ -9,17 +9,25 @@ namespace LostTemple
     /// </summary>
     public class AmbientLightSync : MonoBehaviour
     {
-        public static bool Enabled
+        public static bool Enabled => GameSettings.LightSync;
+
+        /// <summary>S'installe tout seul à côté du GameManager (le Core n'a pas besoin de connaître ce module).</summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void Install()
         {
-            get => PlayerPrefs.GetInt("LT_LightSync", 1) == 1;
-            set => PlayerPrefs.SetInt("LT_LightSync", value ? 1 : 0);
+            var gm = GameManager.Instance;
+            if (gm != null && gm.GetComponent<AmbientLightSync>() == null) gm.gameObject.AddComponent<AmbientLightSync>();
         }
 
         Color baseAmbient;
         float baseFog;
         float factor = 1f;
 
-        void Awake() { SceneManager.sceneLoaded += OnLoaded; }
+        void Awake()
+        {
+            SceneManager.sceneLoaded += OnLoaded;
+            OnLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
+        }
         void OnDestroy() { SceneManager.sceneLoaded -= OnLoaded; }
 
         void OnLoaded(Scene s, LoadSceneMode m)

@@ -93,6 +93,7 @@ namespace LostTemple.EditorTools
             return k;
         }
 
+        [RoomBuilder(6, "Room7_Coyote", "3_Camera")]
         static Scene BuildRoom7()
         {
             var (scene, root, cam) = NewRoom("Room7", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.13f, 0.14f, 0.24f));

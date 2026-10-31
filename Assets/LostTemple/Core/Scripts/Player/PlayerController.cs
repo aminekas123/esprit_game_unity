@@ -27,6 +27,8 @@ namespace LostTemple
         /// <summary>Invisible aux gardiens tant que le capteur de proximité est couvert (énergie limitée).</summary>
         public bool IsCloaked { get; private set; }
         public float CloakEnergy { get; private set; } = 1f;
+        /// <summary>Nombre de gardiens présents dans la salle (l'invisibilité n'est utile qu'avec eux).</summary>
+        public static int GuardCount;
 
         CharacterController cc;
         float vy;
@@ -71,7 +73,7 @@ namespace LostTemple
             if (transform.position.y < killY) Hurt("Vous êtes tombé dans le vide !");
 
             // Invisibilité : seulement dans les salles gardées, 3 s maximum, se recharge en 4 s
-            bool want = Enemy.Count > 0 && !Frozen && SensorManager.Instance.IsCovered();
+            bool want = GuardCount > 0 && !Frozen && SensorManager.Instance.IsCovered();
             if (want && CloakEnergy > 0f) CloakEnergy = Mathf.Max(0f, CloakEnergy - dt / 3f);
             else if (!want) CloakEnergy = Mathf.Min(1f, CloakEnergy + dt / 4f);
             bool cloaked = want && CloakEnergy > 0f;

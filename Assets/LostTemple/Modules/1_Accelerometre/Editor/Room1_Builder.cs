@@ -11,6 +11,7 @@ namespace LostTemple.EditorTools
     {
         // ================================================================== Salle 1 — Accéléromètre
 
+        [RoomBuilder(0, "Room1_Entree", "1_Accelerometre")]
         static Scene BuildRoom1()
         {
             var (scene, root, cam) = NewRoom("Room1", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.17f, 0.18f, 0.27f));
@@ -46,7 +47,7 @@ namespace LostTemple.EditorTools
             SpikeTrap(root, new Vector3(-5f, 0, 2.5f), new Vector2(4f, 1.6f), 1.4f);
             Relic(root, new Vector3(-6.3f, 0.8f, 0.5f));
             Relic(root, new Vector3(6f, 0.8f, -10.5f));
-            Relic(root, new Vector3(6f, 0.8f, 8.5f));
+            Relic(root, new Vector3(-6f, 0.8f, 8.5f));
 
             foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 3f), new Vector3(6.7f, 2.6f, 3f), new Vector3(-6.7f, 2.6f, 8f), new Vector3(6.7f, 2.6f, 8f) })
                 Torch(root, t);
@@ -90,7 +91,50 @@ namespace LostTemple.EditorTools
             intro.landingDust = FxBurst(root, "Landing Dust", Vector3.zero, new Color(0.75f, 0.65f, 0.5f, 0.6f), 0.3f, 0.9f, 1.2f, 2f, -0.05f, 60, new Vector3(1.5f, 0.2f, 1.5f));
             intro.landingDust.GetComponent<ParticleSystemRenderer>().sharedMaterial = SoftParticleMat();
             Secret(root, new Vector3(-5f, 0.9f, 6.5f), 0);
-            AddRoomManager(root, 0, door, exit, new PuzzleStep[] { puzzle }, new[] { st });
+
+            // Amélioration : plateau à trous (2e épreuve d'inclinaison), sur la droite du fond de la salle
+            Box("Plateau", root, new Vector3(3.9f, 0.3f, 7.95f), new Vector3(4.8f, 0.6f, 3.3f), Sand);
+            Box("Plateau Rim S", root, new Vector3(3.9f, 0.75f, 6.25f), new Vector3(5f, 0.3f, 0.15f), Carved);
+            Box("Plateau Rim N", root, new Vector3(3.9f, 0.75f, 9.65f), new Vector3(5f, 0.3f, 0.15f), Carved);
+            Box("Plateau Rim W", root, new Vector3(1.45f, 0.75f, 7.95f), new Vector3(0.15f, 0.3f, 3.5f), Carved);
+            Box("Plateau Rim E", root, new Vector3(6.35f, 0.75f, 7.95f), new Vector3(0.15f, 0.3f, 3.5f), Carved);
+            var spawn2 = Empty("Plateau Spawn", root, new Vector3(2.1f, 0.95f, 6.75f));
+            var ball2 = Prim(PrimitiveType.Sphere, "Plateau Ball", root, spawn2.localPosition, Vector3.one * 0.5f, Gold);
+            var rb2 = ball2.AddComponent<Rigidbody>();
+            rb2.mass = 1f; rb2.linearDamping = 0.6f; rb2.angularDamping = 0.6f;
+            rb2.interpolation = RigidbodyInterpolation.Interpolate;
+            rb2.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            rb2.isKinematic = true;
+            var goalPlate2 = Box("Plateau Goal", root, new Vector3(5.65f, 0.62f, 9.1f), new Vector3(0.8f, 0.04f, 0.8f), Gold, false).GetComponent<Renderer>();
+            var goal2 = new GameObject("Plateau Goal Trigger");
+            goal2.transform.SetParent(root, false);
+            goal2.transform.localPosition = new Vector3(5.65f, 0.9f, 9.1f);
+            var g2col = goal2.AddComponent<BoxCollider>();
+            g2col.isTrigger = true; g2col.size = new Vector3(0.7f, 0.6f, 0.7f);
+
+            var plateau = root.gameObject.AddComponent<TiltBallPuzzle>();
+            plateau.sensor = SensorKind.Accelerometer;
+            plateau.objective = "Menez la boule au coin doré sans tomber dans les trous";
+            plateau.tutorial = "Deuxième épreuve : un plateau percé de trous noirs.\n\nInclinez doucement le téléphone pour guider la boule jusqu'au coin doré. Si elle passe sur un trou, elle revient au départ.";
+            plateau.hint = "Longez les bords et redressez le téléphone avant chaque trou pour freiner.";
+            plateau.acceleration = 9f;
+            plateau.fxAnchor = goalPlate2.transform;
+            plateau.cameraPose = Pose("Cam Plateau", root, new Vector3(3.9f, 7.5f, 3.6f), new Vector3(3.9f, 0.6f, 8.1f));
+            plateau.ball = rb2; plateau.spawn = spawn2; plateau.goal = g2col; plateau.goalPlate = goalPlate2;
+            goal2.AddComponent<GoalTrigger>().puzzle = plateau;
+            foreach (var h in new[] { new Vector2(3.4f, 7.3f), new Vector2(2.4f, 8.6f), new Vector2(4.5f, 8.4f), new Vector2(5.3f, 7.0f), new Vector2(3.6f, 9.3f) })
+            {
+                Prim(PrimitiveType.Cylinder, "Hole", root, new Vector3(h.x, 0.605f, h.y), new Vector3(0.7f, 0.005f, 0.7f), Pit, false);
+                var ht = new GameObject("Hole Trigger");
+                ht.transform.SetParent(root, false);
+                ht.transform.localPosition = new Vector3(h.x, 0.85f, h.y);
+                var hc = ht.AddComponent<BoxCollider>();
+                hc.isTrigger = true; hc.size = new Vector3(0.45f, 0.5f, 0.45f);
+                ht.AddComponent<HoleTrigger>().puzzle = plateau;
+            }
+            var st2 = MakeStation(root, "Plateau", new Vector3(0.4f, 0f, 7.6f), plateau);
+
+            AddRoomManager(root, 0, door, exit, new PuzzleStep[] { puzzle, plateau }, new[] { st, st2 });
             return scene;
         }
     }

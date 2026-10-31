@@ -40,7 +40,7 @@ namespace LostTemple
         void Ask()
         {
             string what = Describe(targets[index]);
-            UIManager.Instance.ShowCamera($"Photographiez quelque chose de <b>{what}</b>", targets[index], OnPhoto);
+            PhotoCameraUI.Instance.Show($"Photographiez quelque chose de <b>{what}</b>", targets[index], OnPhoto);
         }
 
         void OnPhoto(Color32[] pixels)

@@ -46,6 +46,7 @@ namespace LostTemple.EditorTools
 
         // ================================================================== Salle 5 — Proximité
 
+        [RoomBuilder(4, "Room5_Runes", "6_Luminosite")]
         static Scene BuildRoom5()
         {
             var (scene, root, cam) = NewRoom("Room5", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.14f, 0.15f, 0.24f));
@@ -97,6 +98,7 @@ namespace LostTemple.EditorTools
 
         // ================================================================== Salle 6 — Luminosité : le pont invisible
 
+        [RoomBuilder(5, "Room6_Lumiere", "6_Luminosite")]
         static Scene BuildRoom6()
         {
             var (scene, root, cam) = NewRoom("Room6", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.06f, 0.065f, 0.12f));
@@ -146,7 +148,23 @@ namespace LostTemple.EditorTools
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true, true);
             Secret(root, new Vector3(5.5f, 0.9f, -4f), 5);
             FollowCamera(cam, player);
-            AddRoomManager(root, 5, door, exit, new PuzzleStep[] { light }, new[] { st });
+
+            // Amélioration : code lumineux (ombres courtes ● et longues ▬) à reproduire pour ouvrir la porte
+            var code = root.gameObject.AddComponent<LightCodePuzzle>();
+            code.sensor = SensorKind.Light;
+            code.objective = "Reproduisez le code lumineux au-dessus de la porte";
+            code.tutorial = "La porte ne s'ouvre qu'avec le bon code d'ombres, affiché au-dessus d'elle.\n\n● = ombre brève : couvrez le capteur moins d'une seconde.\n▬ = ombre longue : couvrez-le plus d'une seconde.\n\nRetirez bien la main entre deux ombres.";
+            code.hint = "Comptez « un » pour une ombre brève, « un, deux » pour une ombre longue, puis découvrez complètement le capteur.";
+            var codeLampMat = Mat("CodeLamp", new Color(0.12f, 0.13f, 0.16f), 0.2f, 0.8f, true);
+            code.lamps = new Renderer[4];
+            for (int i = 0; i < 4; i++)
+                code.lamps[i] = Prim(PrimitiveType.Sphere, "Code Lamp " + (i + 1), root, new Vector3(-1.5f + i, 4.3f, 11.85f), Vector3.one * 0.35f, codeLampMat, false).GetComponent<Renderer>();
+            code.codeText = Text3D("Code Text", root, new Vector3(0f, 4.85f, 11.85f), "", 0.08f, new Color(0.7f, 0.9f, 1f));
+            code.fxAnchor = code.lamps[3].transform;
+            code.cameraPose = Pose("Cam Code", root, new Vector3(0f, 2.8f, 6.2f), new Vector3(0f, 3.8f, 12f));
+            var st2 = MakeStation(root, "Code", new Vector3(0f, 0f, 8.2f), code);
+
+            AddRoomManager(root, 5, door, exit, new PuzzleStep[] { light, code }, new[] { st, st2 });
             return scene;
         }
     }

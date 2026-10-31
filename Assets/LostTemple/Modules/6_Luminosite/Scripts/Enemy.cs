@@ -23,8 +23,8 @@ namespace LostTemple
         float phase;
         bool alerted;
 
-        void OnEnable() { all.Add(this); }
-        void OnDisable() { all.Remove(this); }
+        void OnEnable() { all.Add(this); PlayerController.GuardCount++; }
+        void OnDisable() { all.Remove(this); PlayerController.GuardCount--; }
 
         void Update()
         {

@@ -18,9 +18,15 @@ namespace LostTemple
 
         Canvas canvas;
         RectTransform root;
+        /// <summary>Zone d'affichage (zone sûre) où les modules peuvent ajouter leurs propres écrans.</summary>
+        public RectTransform Root => root;
+        /// <summary>Prévient les modules qu'il faut fermer leurs écrans (changement d'état du jeu).</summary>
+        public event Action OverlaysHidden;
+        /// <summary>Vrai quand le joueur explore librement (pas d'énigme, pas de fenêtre ouverte).</summary>
+        public bool Exploring { get; private set; }
 
         // Écrans
-        GameObject mainMenu, settings, diagnostic, hud, pause, victory, modal, codePad, hintBox, cameraView;
+        GameObject mainMenu, settings, diagnostic, hud, pause, victory, modal, codePad, hintBox;
         Text objectiveText, sensorText, titleText, toastText, hintText, modalTitle, modalBody, victoryText;
         Button modalButton, modalAltButton;
         Text modalButtonText;
@@ -39,7 +45,9 @@ namespace LostTemple
         GameObject moveStick;
         // Nouveaux éléments : barres (lanterne, bruit, invisibilité), bouton démo, histoire, journal, rapport capteurs, carte
         Image lanternFill, noiseFill, cloakFill;
-        GameObject lanternBar, noiseBar, cloakBar, shakeButton, cloakButton, demoButton;
+        GameObject lanternBar, noiseBar, cloakBar, shakeButton, cloakButton, demoButton, gaugeButton;
+        Text noiseLabel, gaugeButtonLabel;
+        HudGauge buttonGauge;
         GameObject storyView, journalView, reportView;
         Text storyText, journalText, journalPageText, reportText, costumeText, lightSyncText;
         RectTransform mapRow;
@@ -64,7 +72,6 @@ namespace LostTemple
             BuildPause();
             BuildVictory();
             BuildCodePad();
-            BuildCameraView();
             BuildModal();
             BuildExtras();
             BuildToast();
@@ -77,7 +84,8 @@ namespace LostTemple
             foreach (var g in new[] { mainMenu, settings, diagnostic, hud, pause, victory, journalView, reportView }) g.SetActive(false);
             if (keepGameplayOverlays) return;
             // Tutoriel/message, clavier de symboles et indice restent visibles pendant une pause.
-            modal.SetActive(false); codePad.SetActive(false); hintBox.SetActive(false); HideCamera();
+            modal.SetActive(false); codePad.SetActive(false); hintBox.SetActive(false);
+            OverlaysHidden?.Invoke();
         }
 
         void OnStateChanged(GameState s)
@@ -134,10 +142,24 @@ namespace LostTemple
                     shakeButton.SetActive(exploring && lan.Energy < 0.5f);
                 }
                 else shakeButton.SetActive(false);
-                var qz = QuietZone.Current;
-                noiseBar.SetActive(qz != null);
-                if (qz != null) noiseFill.rectTransform.anchorMax = new Vector2(qz.Noise01, 1f);
-                bool guarded = Enemy.Count > 0 && pc != null;
+                Exploring = exploring;
+                // Jauge et bouton fournis par un module (bruit, miroir suivant…)
+                HudGauge shown = null; buttonGauge = null;
+                foreach (var g in HudGauge.All)
+                {
+                    if (shown == null && g.value != null && g.visible != null && g.visible()) shown = g;
+                    if (buttonGauge == null && g.buttonLabel != null && g.buttonVisible != null && g.buttonVisible()) buttonGauge = g;
+                }
+                noiseBar.SetActive(shown != null);
+                if (shown != null)
+                {
+                    noiseLabel.text = shown.label;
+                    noiseFill.color = shown.color;
+                    noiseFill.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(shown.value()), 1f);
+                }
+                gaugeButton.SetActive(buttonGauge != null);
+                if (buttonGauge != null) gaugeButtonLabel.text = buttonGauge.buttonLabel;
+                bool guarded = PlayerController.GuardCount > 0 && pc != null;
                 cloakBar.SetActive(guarded);
                 if (guarded) cloakFill.rectTransform.anchorMax = new Vector2(pc.CloakEnergy, 1f);
                 cloakButton.SetActive(guarded && exploring && SensorManager.Instance.UsesFallback(SensorKind.Proximity));
@@ -340,7 +362,7 @@ namespace LostTemple
             var hap = MakeButton(parent, "", () => { AudioManager.Instance.SetHaptics(!AudioManager.Instance.Haptics); RefreshSettings(); });
             hapticsToggleText = hap.GetComponentInChildren<Text>();
             MakeButton(parent, "Recalibrer l'inclinaison (tenez le téléphone normalement)", () => { sm.CalibrateTilt(); ShowToast("Position neutre enregistrée"); }, 150);
-            var ls = MakeButton(parent, "", () => { AmbientLightSync.Enabled = !AmbientLightSync.Enabled; RefreshSettings(); });
+            var ls = MakeButton(parent, "", () => { GameSettings.LightSync = !GameSettings.LightSync; RefreshSettings(); });
             lightSyncText = ls.GetComponentInChildren<Text>();
             var cos = MakeButton(parent, "", () => { PlayerCostume.Next(); RefreshSettings(); });
             costumeText = cos.GetComponentInChildren<Text>();
@@ -352,7 +374,7 @@ namespace LostTemple
             var sm = SensorManager.Instance;
             altToggleText.text = "Commandes alternatives : " + (sm.ForceAlternative ? "<color=#F2B847>OUI</color>" : "NON");
             hapticsToggleText.text = "Vibrations : " + (AudioManager.Instance.Haptics ? "<color=#F2B847>OUI</color>" : "NON");
-            if (lightSyncText != null) lightSyncText.text = "Lumière réelle → ambiance du temple : " + (AmbientLightSync.Enabled ? "<color=#F2B847>OUI</color>" : "NON");
+            if (lightSyncText != null) lightSyncText.text = "Lumière réelle → ambiance du temple : " + (GameSettings.LightSync ? "<color=#F2B847>OUI</color>" : "NON");
             if (costumeText != null)
             {
                 int unlocked = 0, total = GameManager.Instance.TotalRelicsEver;
@@ -468,167 +490,6 @@ namespace LostTemple
             var g = codeGrid.gameObject.AddComponent<GridLayoutGroup>();
             g.cellSize = new Vector2(310, 190); g.spacing = new Vector2(20, 20);
             g.childAlignment = TextAnchor.MiddleCenter; g.constraint = GridLayoutGroup.Constraint.FixedColumnCount; g.constraintCount = 3;
-        }
-
-        // ------------------------------------------------------------------ Caméra (photos du Coyote)
-
-        RawImage cameraImage;
-        AspectRatioFitter cameraAspect;
-        Text cameraInstruction;
-        GameObject cameraShootButton, cameraFallbackRow;
-        Image cameraFlash;
-        WebCamTexture webcam;
-        Action<Color32[]> cameraCallback;
-
-        void BuildCameraView()
-        {
-            cameraView = FullScreen("Camera", Color.black);
-            var viewport = Rect("Viewport", cameraView.transform);
-            Stretch(viewport);
-            viewport.gameObject.AddComponent<RectMask2D>();
-            cameraImage = Rect("Feed", viewport).gameObject.AddComponent<RawImage>();
-            cameraImage.rectTransform.anchorMin = cameraImage.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            cameraAspect = cameraImage.gameObject.AddComponent<AspectRatioFitter>();
-            cameraAspect.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-
-            // Cadre de visée : seule la zone centrale est analysée
-            var frame = Rect("Frame", cameraView.transform);
-            frame.anchorMin = new Vector2(0.3f, 0.4f); frame.anchorMax = new Vector2(0.7f, 0.6f);
-            frame.offsetMin = frame.offsetMax = Vector2.zero;
-            foreach (var (amin, amax) in new[] { (new Vector2(0, 0), new Vector2(1, 0)), (new Vector2(0, 1), new Vector2(1, 1)), (new Vector2(0, 0), new Vector2(0, 1)), (new Vector2(1, 0), new Vector2(1, 1)) })
-            {
-                var line = Panel("Edge", frame, Gold);
-                line.rectTransform.anchorMin = amin; line.rectTransform.anchorMax = amax;
-                line.rectTransform.sizeDelta = new Vector2(8, 8);
-                line.raycastTarget = false;
-            }
-
-            var top = Panel("Instruction", cameraView.transform, new Color(0, 0, 0, 0.6f));
-            top.rectTransform.anchorMin = new Vector2(0, 1); top.rectTransform.anchorMax = Vector2.one; top.rectTransform.pivot = new Vector2(0.5f, 1);
-            top.rectTransform.sizeDelta = new Vector2(0, 260);
-            cameraInstruction = Label(top.transform, "", 46);
-            Stretch(cameraInstruction.rectTransform, 30, 20, 30, 20);
-
-            var bottom = Rect("Bottom", cameraView.transform);
-            bottom.anchorMin = new Vector2(0, 0); bottom.anchorMax = new Vector2(1, 0); bottom.pivot = new Vector2(0.5f, 0);
-            bottom.sizeDelta = new Vector2(0, 520);
-            Column(bottom, 20, 40).childAlignment = TextAnchor.LowerCenter;
-            cameraShootButton = MakeButton(bottom, "Prendre la photo", TakePhoto, 170, new Color(0.55f, 0.38f, 0.1f)).gameObject;
-            cameraFallbackRow = Rect("Fallback", bottom).gameObject;
-            Size(cameraFallbackRow.transform as RectTransform, 150);
-            Size(cameraFallbackRow.transform as RectTransform, 300);
-            var hl = cameraFallbackRow.AddComponent<GridLayoutGroup>();
-            hl.cellSize = new Vector2(235, 135); hl.spacing = new Vector2(12, 12);
-            hl.childAlignment = TextAnchor.MiddleCenter; hl.constraint = GridLayoutGroup.Constraint.FixedColumnCount; hl.constraintCount = 4;
-            foreach (PhotoTarget t in Enum.GetValues(typeof(PhotoTarget)))
-            {
-                var tt = t;
-                string label = t == PhotoTarget.Bright ? "Clair" : t == PhotoTarget.Dark ? "Sombre" : t == PhotoTarget.Detailed ? "Motifs" : PhotoPuzzle.Describe(t).Substring(0, 1) + PhotoPuzzle.Describe(t).Substring(1).ToLower();
-                var b = MakeButton(cameraFallbackRow.transform, label, () => SimulatedPhoto(tt), 135, PhotoPuzzle.Sample(t) * 0.8f);
-                b.GetComponentInChildren<Text>().fontSize = 36;
-            }
-
-            cameraFlash = Panel("Flash", cameraView.transform, new Color(1, 1, 1, 0));
-            Stretch(cameraFlash.rectTransform);
-            cameraFlash.raycastTarget = false;
-        }
-
-        /// <summary>
-        /// Ouvre l'appareil photo (caméra arrière du téléphone). Si la caméra est absente ou refusée,
-        /// des boutons de couleur simulent la photo (commande alternative).
-        /// </summary>
-        public void ShowCamera(string instruction, PhotoTarget target, Action<Color32[]> onShot)
-        {
-            cameraCallback = onShot;
-            cameraView.SetActive(true);
-            cameraView.transform.SetAsLastSibling();
-            bool fallback = SensorManager.Instance.UsesFallback(SensorKind.Camera);
-            cameraInstruction.text = instruction + (fallback ? "\n<size=34><color=#F2B847>Caméra indisponible : choisissez la couleur à « photographier ».</color></size>" : "\n<size=34>Visez l'objet dans le cadre doré.</size>");
-            cameraShootButton.SetActive(!fallback);
-            cameraFallbackRow.SetActive(fallback);
-            cameraImage.color = fallback ? new Color(0.1f, 0.1f, 0.15f) : Color.white;
-            if (!fallback) StartCoroutine(StartWebcam());
-        }
-
-        IEnumerator StartWebcam()
-        {
-#if UNITY_ANDROID && !UNITY_EDITOR
-            if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Camera))
-            {
-                UnityEngine.Android.Permission.RequestUserPermission(UnityEngine.Android.Permission.Camera);
-                for (float t = 0; t < 10f && !UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Camera); t += Time.unscaledDeltaTime)
-                    yield return null;
-                if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Camera))
-                {
-                    cameraShootButton.SetActive(false);
-                    cameraFallbackRow.SetActive(true);
-                    ShowToast("Caméra refusée : utilisez les boutons de couleur.");
-                    yield break;
-                }
-            }
-#endif
-            if (webcam == null)
-            {
-                string device = null;
-                foreach (var d in WebCamTexture.devices) if (!d.isFrontFacing) { device = d.name; break; }
-                if (device == null && WebCamTexture.devices.Length > 0) device = WebCamTexture.devices[0].name;
-                webcam = new WebCamTexture(device, 1280, 720, 30);
-            }
-            cameraImage.texture = webcam;
-            webcam.Play();
-            for (float t = 0; t < 3f && webcam.width < 32; t += Time.unscaledDeltaTime) yield return null;
-            while (cameraView.activeSelf && webcam != null && webcam.isPlaying)
-            {
-                cameraAspect.aspectRatio = webcam.height > 0 ? webcam.width / (float)webcam.height : 1.5f;
-                cameraImage.rectTransform.localEulerAngles = new Vector3(0, 0, -webcam.videoRotationAngle);
-                cameraImage.uvRect = webcam.videoVerticallyMirrored ? new Rect(0, 1, 1, -1) : new Rect(0, 0, 1, 1);
-                yield return null;
-            }
-        }
-
-        void TakePhoto()
-        {
-            if (webcam == null || !webcam.isPlaying || webcam.width < 32) { ShowToast("La caméra démarre…"); return; }
-            var all = webcam.GetPixels32();
-            int w = webcam.width, h = webcam.height;
-            // Zone centrale (40 % × 40 %), un pixel sur 4 : la photo n'est ni enregistrée ni envoyée.
-            var list = new System.Collections.Generic.List<Color32>();
-            for (int y = (int)(h * 0.3f); y < h * 0.7f; y += 4)
-                for (int x = (int)(w * 0.3f); x < w * 0.7f; x += 4)
-                    list.Add(all[y * w + x]);
-            StartCoroutine(Shutter(list.ToArray()));
-        }
-
-        void SimulatedPhoto(PhotoTarget t)
-        {
-            var px = new Color32[64];
-            Color c = PhotoPuzzle.Sample(t);
-            for (int i = 0; i < px.Length; i++)
-                px[i] = t == PhotoTarget.Detailed ? (((i + i / 8) & 1) == 0 ? Color.white : Color.black) : c;
-            StartCoroutine(Shutter(px));
-        }
-
-        IEnumerator Shutter(Color32[] pixels)
-        {
-            AudioManager.Instance.Play(Sfx.Shutter);
-            if (webcam != null && webcam.isPlaying) webcam.Pause();
-            for (float t = 0; t < 0.35f; t += Time.unscaledDeltaTime)
-            {
-                cameraFlash.color = new Color(1, 1, 1, 1f - t / 0.35f);
-                yield return null;
-            }
-            cameraFlash.color = Color.clear;
-            yield return new WaitForSecondsRealtime(0.3f);
-            HideCamera();
-            var cb = cameraCallback;
-            cameraCallback = null;
-            cb?.Invoke(pixels);
-        }
-
-        public void HideCamera()
-        {
-            if (webcam != null) webcam.Stop();
-            if (cameraView != null) cameraView.SetActive(false);
         }
 
         void BuildModal()
@@ -873,7 +734,14 @@ namespace LostTemple
         void BuildExtras()
         {
             lanternFill = Bar("Lanterne (secouez !)", hud.transform, -370f, Gold, out lanternBar);
-            noiseFill = Bar("Bruit — restez silencieux", hud.transform, -432f, new Color(0.9f, 0.25f, 0.15f), out noiseBar);
+            noiseFill = Bar("Jauge", hud.transform, -432f, new Color(0.9f, 0.25f, 0.15f), out noiseBar);
+            noiseLabel = noiseBar.GetComponentsInChildren<Text>(true)[0];
+
+            gaugeButton = MakeButton(hud.transform, "", () => buttonGauge?.onButton?.Invoke(), 130, new Color(0.15f, 0.35f, 0.5f)).gameObject;
+            gaugeButtonLabel = gaugeButton.GetComponentInChildren<Text>();
+            var gb = (RectTransform)gaugeButton.transform;
+            gb.anchorMin = gb.anchorMax = new Vector2(0, 0); gb.pivot = new Vector2(0, 0);
+            gb.sizeDelta = new Vector2(380, 130); gb.anchoredPosition = new Vector2(30, 520);
             cloakFill = Bar("Invisibilité (couvrir le capteur)", hud.transform, -494f, new Color(0.45f, 0.75f, 1f), out cloakBar);
 
             shakeButton = MakeButton(hud.transform, "Secouer la lanterne", () => SensorManager.Instance.FireShake(), 120, new Color(0.55f, 0.38f, 0.1f)).gameObject;
@@ -937,12 +805,13 @@ namespace LostTemple
             if (from != null) from.SetActive(false);
             journalView.SetActive(true);
             journalView.transform.SetAsLastSibling();
-            ShowJournalPage(Mathf.Max(0, GameManager.Instance.JournalPages - 1));
+            ShowJournalPage(Mathf.Max(0, GameManager.Instance.JournalPages.Count - 1));
         }
 
         void ShowJournalPage(int i)
         {
-            int unlocked = GameManager.Instance.JournalPages;
+            var pages = GameManager.Instance.JournalPages;
+            int unlocked = pages.Count;
             if (unlocked == 0)
             {
                 journalPageText.text = "Journal de l'explorateur";
@@ -951,7 +820,7 @@ namespace LostTemple
             }
             journalIndex = Mathf.Clamp(i, 0, unlocked - 1);
             journalPageText.text = $"Page {journalIndex + 1} / {unlocked}";
-            journalText.text = Journal.Pages[journalIndex];
+            journalText.text = Journal.Pages[pages[journalIndex]];
         }
 
         /// <summary>Cartes d'histoire plein écran (cinématique d'intro). Le joueur peut passer.</summary>
@@ -979,17 +848,23 @@ namespace LostTemple
         {
             for (int i = mapRow.childCount - 1; i >= 0; i--) Destroy(mapRow.GetChild(i).gameObject);
             var gm = GameManager.Instance;
-            string[] icons = { "Incl.", "Bous.", "Gyro", "Micro", "Prox.", "Lum.", "Cam." };
             for (int i = 0; i < GameManager.RoomScenes.Length; i++)
             {
-                bool done = i < gm.CurrentRoom || i < gm.JournalPages;
+                bool done = i < gm.CurrentRoom || gm.BestTime(i) > 0f;
                 bool current = i == gm.CurrentRoom;
                 var cell = Panel("Room " + (i + 1), mapRow, current ? Gold : done ? new Color(0.25f, 0.55f, 0.3f) : new Color(0.2f, 0.22f, 0.3f));
                 float best = gm.BestTime(i);
-                var t = Label(cell.transform, $"<b>{i + 1}</b>\n<size=24>{icons[i]}</size>\n<size=22>{(best > 0 ? $"{(int)best / 60}:{(int)best % 60:00}" : "—")}</size>", 34, TextAnchor.MiddleCenter, current ? Color.black : TextColor);
+                var t = Label(cell.transform, $"<b>{i + 1}</b>\n<size=24>{Short(GameManager.RoomScenes[i])}</size>\n<size=22>{(best > 0 ? $"{(int)best / 60}:{(int)best % 60:00}" : "—")}</size>", 34, TextAnchor.MiddleCenter, current ? Color.black : TextColor);
                 Stretch(t.rectTransform);
             }
-            secretsText.text = $"Vies : {gm.Lives}   ·   Reliques secrètes : {gm.Secrets}/7" + (gm.HardMode ? "   ·   <color=#F07060>Difficile</color>" : "");
+            secretsText.text = $"Vies : {gm.Lives}   ·   Reliques secrètes : {gm.Secrets}/{GameManager.RoomScenes.Length}" + (gm.HardMode ? "   ·   <color=#F07060>Difficile</color>" : "");
+        }
+
+        static string Short(string scene)
+        {
+            int u = scene.IndexOf('_');
+            string s = u >= 0 ? scene.Substring(u + 1) : scene;
+            return s.Length > 7 ? s.Substring(0, 6) + "." : s;
         }
 
         string RecordsText()
@@ -1000,9 +875,9 @@ namespace LostTemple
             {
                 float b = gm.BestTime(i);
                 sb.Append($"Salle {i + 1} : {(b > 0 ? $"{(int)b / 60}:{(int)b % 60:00}" : "—")}   ");
-                if (i == 3) sb.Append("\n");
+                if (i % 4 == 3) sb.Append("\n");
             }
-            sb.Append($"\n\nReliques secrètes trouvées : {gm.Secrets}/7");
+            sb.Append($"\n\nReliques secrètes trouvées : {gm.Secrets}/{GameManager.RoomScenes.Length}");
             return sb.ToString();
         }
     }

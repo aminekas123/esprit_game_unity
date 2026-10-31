@@ -11,6 +11,7 @@ namespace LostTemple.EditorTools
     {
         // ================================================================== Salle 2 — Boussole
 
+        [RoomBuilder(1, "Room2_Boussole", "4_Boussole")]
         static Scene BuildRoom2()
         {
             var (scene, root, cam) = NewRoom("Room2", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.15f, 0.16f, 0.25f));
@@ -41,6 +42,14 @@ namespace LostTemple.EditorTools
             compass.fxAnchor = needle;
             compass.cameraPose = Pose("Cam Compass", root, new Vector3(-3f, 6.5f, -11f), new Vector3(-2f, 0.8f, -3f));
             compass.needle = needle; compass.needleGem = gem.GetComponent<Renderer>(); compass.passageWall = passage;
+            // Amélioration : trois directions successives, une lampe par direction trouvée
+            compass.directions = 3;
+            var lampMat = Mat("StepLamp", new Color(0.2f, 0.18f, 0.15f), 0.2f, 0.8f, true);
+            compass.stepLamps = new Renderer[3];
+            for (int i = 0; i < 3; i++)
+                compass.stepLamps[i] = Prim(PrimitiveType.Sphere, "Direction Lamp " + (i + 1), root, new Vector3(-3.55f + i * 0.55f, 1.08f, -6.25f), Vector3.one * 0.2f, lampMat, false).GetComponent<Renderer>();
+            compass.objective = "Trouvez les 3 directions du passage secret";
+            compass.tutorial = "L'aiguille magique indique de quel côté tourner.\n\nTenez le téléphone à plat ou droit devant vous et tournez sur vous-même lentement, jusqu'à ce que l'aiguille pointe vers le fond de la salle et devienne dorée. Restez immobile un instant.\n\nTrois directions successives sont à trouver : une lampe s'allume à chacune.";
 
             FireJet(root, new Vector3(-4.5f, 0, 8.5f), 0f);
             FireJet(root, new Vector3(-1.5f, 0, 8.5f), 1.6f);

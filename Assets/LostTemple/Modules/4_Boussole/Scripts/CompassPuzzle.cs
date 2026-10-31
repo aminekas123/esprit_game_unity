@@ -14,18 +14,40 @@ namespace LostTemple
         public Transform passageWall;
         public float tolerance = 18f;
         public float holdTime = 1.5f;
+        [Tooltip("Nombre de directions successives à trouver.")]
+        public int directions = 3;
+        [Tooltip("Une lampe par direction trouvée (sur le socle de la boussole).")]
+        public Renderer[] stepLamps;
 
         float target;
+        int found;
         float hold;
         float bestError = 999f;
 
         void Reset() { sensor = SensorKind.Compass; }
 
-        public override float Progress => IsActive ? hold / holdTime : -1f;
+        public override float Progress => IsActive ? (found + hold / holdTime) / directions : -1f;
 
         protected override void OnBegin()
         {
+            found = 0;
             target = Mathf.Repeat(Sensors.GetHeading() + Random.Range(110f, 250f), 360f);
+            foreach (var l in stepLamps) SetGlow(l, Color.black, 0f);
+        }
+
+        /// <summary>Une direction trouvée : la lampe s'allume et l'aiguille indique la suivante.</summary>
+        void DirectionFound()
+        {
+            if (found < stepLamps.Length) SetGlow(stepLamps[found], new Color(1f, 0.8f, 0.3f), 3f);
+            found++;
+            hold = 0f;
+            bestError = 999f;
+            ReportProgress();
+            if (found >= directions) { Complete(); return; }
+            Audio.Play(Sfx.Reveal);
+            UIManager.Instance.ShowToast($"Direction {found}/{directions} trouvée ! L'aiguille indique la suivante.");
+            float turn = Random.Range(100f, 170f) * (Random.value < 0.5f ? -1f : 1f);
+            target = Mathf.Repeat(target + turn, 360f);
         }
 
         void Update()
@@ -47,7 +69,7 @@ namespace LostTemple
                 if (hold == 0f) Audio.Play(Sfx.Tick);
                 hold += Time.deltaTime;
                 Audio.SetLoopIntensity(hold / holdTime);
-                if (hold >= holdTime) Complete();
+                if (hold >= holdTime) DirectionFound();
             }
             else
             {

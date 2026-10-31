@@ -24,22 +24,6 @@ namespace LostTemple.EditorTools
         const string MatDir = CoreDir + "/Materials";
         const string TexDir = CoreDir + "/Textures";
         const string MeshDir = CoreDir + "/Meshes";
-
-        /// <summary>Dossier de chaque scène : le menu dans Core, chaque salle dans le module de son capteur.</summary>
-        static string SceneFolder(string scene)
-        {
-            switch (scene)
-            {
-                case "Room1_Entree": return ModulesDir + "/1_Accelerometre/Scenes";
-                case "Room3_Statues": return ModulesDir + "/2_Gyroscope/Scenes";
-                case "Room7_Coyote": return ModulesDir + "/3_Camera/Scenes";
-                case "Room2_Boussole": return ModulesDir + "/4_Boussole/Scenes";
-                case "Room4_Monstre": return ModulesDir + "/5_Micro/Scenes";
-                case "Room5_Runes":
-                case "Room6_Lumiere": return ModulesDir + "/6_Luminosite/Scenes";
-                default: return CoreDir + "/Scenes";
-            }
-        }
         const float TileSize = 3f;   // une répétition de texture tous les 3 m
 
         static readonly Dictionary<string, Material> mats = new Dictionary<string, Material>();
@@ -62,35 +46,38 @@ namespace LostTemple.EditorTools
             postProfile = null;
             rng = new System.Random(42);
 
-            var scenes = new List<EditorBuildSettingsScene>
+            // Le menu, puis chaque salle déclarée par un module ([RoomBuilder]) présente dans ce projet.
+            var scenes = new List<EditorBuildSettingsScene> { Save(BuildMenu(), GameManager.MenuScene, CoreDir + "/Scenes") };
+            var builders = new List<(RoomBuilderAttribute info, System.Reflection.MethodInfo method)>();
+            foreach (var mi in typeof(LostTempleSceneBuilder).GetMethods(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public))
             {
-                Save(BuildMenu(), GameManager.MenuScene),
-                Save(BuildRoom1(), GameManager.RoomScenes[0]),
-                Save(BuildRoom2(), GameManager.RoomScenes[1]),
-                Save(BuildRoom3(), GameManager.RoomScenes[2]),
-                Save(BuildRoom4(), GameManager.RoomScenes[3]),
-                Save(BuildRoom5(), GameManager.RoomScenes[4]),
-                Save(BuildRoom6(), GameManager.RoomScenes[5]),
-                Save(BuildRoom7(), GameManager.RoomScenes[6]),
-            };
+                var info = (RoomBuilderAttribute)System.Attribute.GetCustomAttribute(mi, typeof(RoomBuilderAttribute));
+                if (info != null) builders.Add((info, mi));
+            }
+            builders.Sort((a, b) => a.info.Order.CompareTo(b.info.Order));
+            foreach (var b in builders)
+                scenes.Add(Save((Scene)b.method.Invoke(null, null), b.info.Scene, ModulesDir + "/" + b.info.Module + "/Scenes"));
             EditorBuildSettings.scenes = scenes.ToArray();
-            ConfigurePlayer();
+            var modules = new HashSet<string>();
+            foreach (var b in builders) modules.Add(b.info.Module);
+            ConfigurePlayer(modules.Count == 1 ? new List<string>(modules)[0] : null);
             AssetDatabase.SaveAssets();
-            EditorSceneManager.OpenScene($"{SceneFolder(GameManager.MenuScene)}/{GameManager.MenuScene}.unity");
-            Debug.Log("[Lost Temple] 8 scènes générées et ajoutées aux Build Settings.");
+            EditorSceneManager.OpenScene($"{CoreDir}/Scenes/{GameManager.MenuScene}.unity");
+            Debug.Log($"[Lost Temple] {scenes.Count} scènes générées et ajoutées aux Build Settings.");
         }
 
-        static void ConfigurePlayer()
+        /// <summary>Nom et identifiant de l'application : propres à chaque projet de module (sauvegardes séparées).</summary>
+        static void ConfigurePlayer(string singleModule)
         {
-            PlayerSettings.productName = "Lost Temple";
+            PlayerSettings.productName = singleModule == null ? "Lost Temple" : "Lost Temple — " + singleModule.Substring(2).Replace('_', ' ');
             PlayerSettings.companyName = "LostTempleTeam";
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
-            PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.losttempleteam.losttemple");
+            string id = singleModule == null ? "losttemple" : "losttemple." + singleModule.Substring(2).ToLowerInvariant();
+            PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.losttempleteam." + id);
         }
 
-        static EditorBuildSettingsScene Save(Scene s, string name)
+        static EditorBuildSettingsScene Save(Scene s, string name, string dir)
         {
-            string dir = SceneFolder(name);
             Directory.CreateDirectory(dir);
             string path = $"{dir}/{name}.unity";
             EditorSceneManager.SaveScene(s, path);
@@ -850,7 +837,7 @@ namespace LostTemple.EditorTools
             Dust(root, new Vector3(0, 2.5f, 0f), new Vector3(13f, 4f, 22f));
             var rm = root.gameObject.AddComponent<RoomManager>();
             rm.sparks = Sparks(root);
-            rm.roomIndex = index;
+            rm.storyIndex = index;
             rm.door = door.door; rm.doorFx = door.fx; rm.exit = exit;
             rm.steps = steps; rm.stations = stations;
             return rm;
@@ -864,6 +851,84 @@ namespace LostTemple.EditorTools
             Vector3 focus = player.transform.position + Vector3.up + Vector3.forward * rig.lookAhead;
             cam.transform.position = focus + rig.offset;
             cam.transform.LookAt(focus);
+        }
+
+        // ================================================================== Monstre (salle du micro et boss final)
+
+        static MonsterController Monster(Transform root, Vector3 pos, bool shadow = false)
+        {
+            var skin = shadow ? Mat("ShadowSkin", new Color(0.16f, 0.1f, 0.22f), 0.1f, 0.6f) : Mat("MonsterSkin", new Color(0.24f, 0.36f, 0.2f), 0.05f, 0.55f);
+            var belly = shadow ? Mat("ShadowBelly", new Color(0.35f, 0.2f, 0.4f), 0f, 0.5f) : Mat("MonsterBelly", new Color(0.62f, 0.52f, 0.33f), 0f, 0.4f);
+            var horn = Mat("MonsterHorn", new Color(0.88f, 0.82f, 0.7f), 0f, 0.5f);
+            var teeth = Mat("Teeth", new Color(0.95f, 0.93f, 0.85f), 0f, 0.6f);
+            var claw = Mat("Claw", new Color(0.12f, 0.1f, 0.1f), 0.3f, 0.7f);
+            var eyeMat = Mat("MonsterEye", new Color(0.3f, 0.05f, 0.02f), 0f, 0.9f, true);
+
+            var go = new GameObject(shadow ? "Shadow Guardian" : "Monster");
+            go.transform.SetParent(root, false);
+            go.transform.localPosition = pos;
+            go.transform.localRotation = Quaternion.Euler(0, 180f, 0);   // il regarde vers l'explorateur
+
+            // Jambes (restent au sol)
+            Prim(PrimitiveType.Capsule, "Leg L", go.transform, new Vector3(-0.75f, 0.6f, 0f), new Vector3(0.7f, 0.6f, 0.7f), skin, false);
+            Prim(PrimitiveType.Capsule, "Leg R", go.transform, new Vector3(0.75f, 0.6f, 0f), new Vector3(0.7f, 0.6f, 0.7f), skin, false);
+            Prim(PrimitiveType.Sphere, "Foot L", go.transform, new Vector3(-0.8f, 0.12f, 0.35f), new Vector3(0.6f, 0.25f, 0.9f), skin, false);
+            Prim(PrimitiveType.Sphere, "Foot R", go.transform, new Vector3(0.8f, 0.12f, 0.35f), new Vector3(0.6f, 0.25f, 0.9f), skin, false);
+
+            var body = Empty("Body", go.transform, new Vector3(0, 1.7f, 0));
+            Prim(PrimitiveType.Sphere, "Torso", body, Vector3.zero, new Vector3(2.5f, 2.3f, 1.8f), skin, false);
+            Prim(PrimitiveType.Sphere, "Belly", body, new Vector3(0, -0.2f, 0.62f), new Vector3(1.6f, 1.6f, 0.7f), belly, false);
+            for (int i = 0; i < 5; i++)
+            {
+                var sp = Prim(PrimitiveType.Sphere, "Back Spike", body, new Vector3(0, 0.9f - i * 0.4f, -0.75f - i * 0.05f), new Vector3(0.22f, 0.7f, 0.22f), horn, false);
+                sp.transform.localRotation = Quaternion.Euler(-50f, 0, 0);
+            }
+
+            var head = Empty("Head", body, new Vector3(0, 1.35f, 0.55f));
+            Prim(PrimitiveType.Sphere, "Skull", head, Vector3.zero, new Vector3(1.35f, 1.1f, 1.2f), skin, false);
+            Box("Snout", head, new Vector3(0, -0.15f, 0.6f), new Vector3(0.95f, 0.45f, 0.7f), skin, false);
+            Box("Brow", head, new Vector3(0, 0.3f, 0.48f), new Vector3(1.1f, 0.18f, 0.3f), skin, false);
+            for (int s = -1; s <= 1; s += 2)
+            {
+                var h = Prim(PrimitiveType.Capsule, "Horn", head, new Vector3(s * 0.5f, 0.6f, -0.05f), new Vector3(0.2f, 0.5f, 0.2f), horn, false);
+                h.transform.localRotation = Quaternion.Euler(-25f, 0, -s * 35f);
+                for (int t = 0; t < 3; t++)
+                    Prim(PrimitiveType.Sphere, "Fang", head, new Vector3(s * (0.12f + t * 0.12f), -0.4f, 0.85f), new Vector3(0.07f, 0.18f, 0.07f), teeth, false);
+            }
+            var eyeL = Prim(PrimitiveType.Sphere, "Eye L", head, new Vector3(-0.3f, 0.12f, 0.55f), Vector3.one * 0.22f, eyeMat, false);
+            var eyeR = Prim(PrimitiveType.Sphere, "Eye R", head, new Vector3(0.3f, 0.12f, 0.55f), Vector3.one * 0.22f, eyeMat, false);
+            var el = new GameObject("Eye Light").AddComponent<Light>();
+            el.transform.SetParent(head, false);
+            el.transform.localPosition = new Vector3(0, 0.1f, 1.2f);
+            el.type = LightType.Point; el.color = new Color(1f, 0.2f, 0.1f); el.range = 5f; el.intensity = 0f; el.shadows = LightShadows.None;
+
+            var jaw = Empty("Jaw", head, new Vector3(0, -0.35f, 0.25f));
+            Box("Jaw Bone", jaw, new Vector3(0, -0.08f, 0.35f), new Vector3(0.85f, 0.2f, 0.75f), skin, false);
+            for (int t = -2; t <= 2; t++)
+                Prim(PrimitiveType.Sphere, "Tooth", jaw, new Vector3(t * 0.15f, 0.05f, 0.65f), new Vector3(0.07f, 0.15f, 0.07f), teeth, false);
+
+            Transform Arm(string n, float x)
+            {
+                var pivot = Empty(n, body, new Vector3(x, 0.55f, 0.15f));
+                Prim(PrimitiveType.Capsule, "Upper", pivot, new Vector3(0, -0.6f, 0), new Vector3(0.5f, 0.75f, 0.5f), skin, false);
+                Prim(PrimitiveType.Capsule, "Fore", pivot, new Vector3(0, -1.45f, 0.15f), new Vector3(0.42f, 0.6f, 0.42f), skin, false);
+                for (int c = -1; c <= 1; c++)
+                {
+                    var cl = Prim(PrimitiveType.Sphere, "Claw", pivot, new Vector3(c * 0.13f, -2.05f, 0.35f), new Vector3(0.08f, 0.3f, 0.08f), claw, false);
+                    cl.transform.localRotation = Quaternion.Euler(35f, 0, 0);
+                }
+                return pivot;
+            }
+            var armL = Arm("Arm L", -1.25f);
+            var armR = Arm("Arm R", 1.25f);
+
+            var death = FxBurst(go.transform, "Death Dust", new Vector3(0, 2f, 0), new Color(0.35f, 0.15f, 0.45f, 0.8f), 0.4f, 1.1f, 2f, 3f, -0.1f, 150, new Vector3(2.5f, 3f, 2f));
+
+            var m = go.AddComponent<MonsterController>();
+            m.body = body; m.head = head; m.jaw = jaw; m.armL = armL; m.armR = armR;
+            m.eyes = new[] { eyeL.GetComponent<Renderer>(), eyeR.GetComponent<Renderer>() };
+            m.eyeLight = el; m.deathFx = death;
+            return m;
         }
 
         // ================================================================== Menu
@@ -899,7 +964,7 @@ namespace LostTemple.EditorTools
 
         // ================================================================== Nouveautés : secrets, rocher, silence, momies
 
-        static void Secret(Transform root, Vector3 pos, int roomIndex)
+        static void Secret(Transform root, Vector3 pos, int storyIndex)
         {
             var go = new GameObject("Secret Relic");
             go.transform.SetParent(root, false);
@@ -911,10 +976,23 @@ namespace LostTemple.EditorTools
             sc.isTrigger = true; sc.radius = 2f;
             relicGo.AddComponent<LostTemple.Relic>();
             var sr = go.AddComponent<SecretRelic>();
-            sr.gesture = Journal.Secrets[roomIndex];
+            sr.gesture = Journal.Secrets[storyIndex];
             sr.relic = relicGo;
             sr.revealFx = FxBurst(go.transform, "Reveal FX", Vector3.zero, new Color(0.5f, 0.85f, 1f, 1f), 0.05f, 0.18f, 1.2f, 3f, -0.2f, 80, Vector3.one * 0.5f);
             sr.revealFx.GetComponent<ParticleSystemRenderer>().sharedMaterial = ParticleMat();
         }
+    }
+
+    /// <summary>
+    /// Marque la fonction qui construit une salle. Le générateur (Core) crée toutes les salles présentes
+    /// dans le projet : le jeu complet en a 7, un projet de module seulement la ou les siennes.
+    /// </summary>
+    [System.AttributeUsage(System.AttributeTargets.Method)]
+    public class RoomBuilderAttribute : System.Attribute
+    {
+        public readonly int Order;
+        public readonly string Scene;
+        public readonly string Module;
+        public RoomBuilderAttribute(int order, string scene, string module) { Order = order; Scene = scene; Module = module; }
     }
 }
