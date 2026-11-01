@@ -126,6 +126,7 @@ namespace LostTemple
 
         void AdvanceStep()
         {
+            SensorManager.Instance.StepAlternative = false;   // le choix « boutons » ne vaut que pour l'épreuve précédente
             stepIndex++;
             stepStarted = false;
             hintShown = false;

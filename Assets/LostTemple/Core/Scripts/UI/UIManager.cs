@@ -606,9 +606,9 @@ namespace LostTemple
             if (sm.UsesFallback(s.sensor) || sm.ForceAlternative)
                 ShowMessage(s.objective, s.tutorial + mode, "Continuer", onContinue);
             else
-                ShowMessage(s.objective, s.tutorial + mode, "Continuer", onContinue, "Utiliser les boutons à la place", () =>
+                ShowMessage(s.objective, s.tutorial + mode, "Continuer", onContinue, "Boutons pour cette épreuve seulement", () =>
                 {
-                    sm.SetForceAlternative(true);
+                    sm.StepAlternative = true;
                     onContinue();
                 });
         }
