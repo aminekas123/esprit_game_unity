@@ -330,7 +330,14 @@ namespace LostTemple
             var title = Label(col, "LOST TEMPLE", 120, TextAnchor.MiddleCenter, Gold);
             title.fontStyle = FontStyle.Bold;
             Size(title, 200);
-            Size(Label(col, "L'éveil des capteurs", 56, TextAnchor.UpperCenter, Amber), 120);
+            Size(Label(col, "L'éveil des capteurs", 56, TextAnchor.UpperCenter, Amber), 90);
+            // Projet de module : on affiche lequel (ex. « LT Boussole » → « Module Boussole »)
+            if (Application.productName.StartsWith("LT "))
+            {
+                var mod = Label(col, "Module " + Application.productName.Substring(3), 50, TextAnchor.UpperCenter, new Color(0.55f, 0.8f, 1f));
+                mod.fontStyle = FontStyle.Bold;
+                Size(mod, 80);
+            }
             var spacer = Rect("Spacer", col); spacer.gameObject.AddComponent<LayoutElement>().flexibleHeight = 1;
 
             continueButton = MakeButton(col, "Continuer", () => GameManager.Instance.ContinueGame(), 150).gameObject;
