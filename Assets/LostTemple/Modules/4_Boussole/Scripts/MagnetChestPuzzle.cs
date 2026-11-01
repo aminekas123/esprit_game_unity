@@ -37,9 +37,10 @@ namespace LostTemple
             baseline = -1f; sampleTime = 0f; sampleSum = 0f; samples = 0; gauge = 0f;
             hud = new HudGauge
             {
-                label = "Champ magnétique",
+                label = HasMagnetometer ? "Champ magnétique" : "Aimant (4 clics ou touche M)",
                 color = new Color(0.55f, 0.75f, 1f),
-                value = () => Mathf.InverseLerp(1f, ratioNeeded, ratio),
+                // Avec le capteur : force du champ mesuré. En secours : progression des clics.
+                value = () => HasMagnetometer ? Mathf.InverseLerp(1f, ratioNeeded, ratio) : gauge,
                 visible = () => IsActive,
                 buttonLabel = "Approcher l'aimant",
                 onButton = () => { gauge = Mathf.Min(1f, gauge + 0.25f); ReportProgress(); Audio.Play(Sfx.Tick); },
@@ -65,9 +66,9 @@ namespace LostTemple
                 }
                 ratio = Mathf.Lerp(ratio, mag / baseline, 1f - Mathf.Exp(-8f * Time.deltaTime));
             }
-            else ratio = keyMagnet ? ratioNeeded : 1f;
 
-            if (ratio >= ratioNeeded || keyMagnet)
+            bool charging = keyMagnet || (HasMagnetometer && ratio >= ratioNeeded);
+            if (charging)
             {
                 gauge += Time.deltaTime / fillTime;
                 ReportProgress();
@@ -75,7 +76,9 @@ namespace LostTemple
             }
             else
             {
-                gauge = Mathf.Max(0f, gauge - Time.deltaTime / (fillTime * 3f));
+                // Le champ ne retombe que si l'on éloigne vraiment le téléphone du métal ;
+                // en commande de secours (clics), la jauge garde ce qui a été gagné.
+                if (HasMagnetometer) gauge = Mathf.Max(0f, gauge - Time.deltaTime / (fillTime * 3f));
                 if (sparks != null && sparks.isEmitting) sparks.Stop();
             }
             gauge = Mathf.Clamp01(gauge);
