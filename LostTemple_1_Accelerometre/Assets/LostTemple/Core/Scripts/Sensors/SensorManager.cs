@@ -117,7 +117,13 @@ namespace LostTemple
         }
 
         /// <summary>Vrai si l'énigme doit utiliser la commande alternative pour ce capteur.</summary>
-        public bool UsesFallback(SensorKind kind) => ForceAlternative || !IsHardwareAvailable(kind);
+        public bool UsesFallback(SensorKind kind) => ForceAlternative || StepAlternative || !IsHardwareAvailable(kind);
+
+        /// <summary>
+        /// Commandes alternatives pour l'épreuve en cours seulement (bouton du tutoriel).
+        /// Remis à faux à chaque nouvelle épreuve, contrairement au réglage permanent ForceAlternative.
+        /// </summary>
+        public bool StepAlternative { get; set; }
 
         public static string DisplayName(SensorKind kind)
         {

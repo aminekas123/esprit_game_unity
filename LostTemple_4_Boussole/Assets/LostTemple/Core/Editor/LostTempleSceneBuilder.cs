@@ -66,10 +66,25 @@ namespace LostTemple.EditorTools
             Debug.Log($"[Lost Temple] {scenes.Count} scènes générées et ajoutées aux Build Settings.");
         }
 
+        static string ShortModuleName(string module)
+        {
+            switch (module)
+            {
+                case "1_Accelerometre": return "Accéléro";
+                case "2_Gyroscope": return "Gyroscope";
+                case "3_Camera": return "Caméra";
+                case "4_Boussole": return "Boussole";
+                case "5_Micro": return "Micro";
+                case "6_Luminosite": return "Lumière";
+                default: return module.Substring(2).Replace('_', ' ');
+            }
+        }
+
         /// <summary>Nom et identifiant de l'application : propres à chaque projet de module (sauvegardes séparées).</summary>
         static void ConfigurePlayer(string singleModule)
         {
-            PlayerSettings.productName = singleModule == null ? "Lost Temple" : "Lost Temple — " + singleModule.Substring(2).Replace('_', ' ');
+            // Nom court sous l'icône du téléphone : « LT Boussole », « LT Accéléro »… (pas coupé par Android)
+            PlayerSettings.productName = singleModule == null ? "Lost Temple" : "LT " + ShortModuleName(singleModule);
             PlayerSettings.companyName = "LostTempleTeam";
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             string id = singleModule == null ? "losttemple" : "losttemple." + singleModule.Substring(2).ToLowerInvariant();

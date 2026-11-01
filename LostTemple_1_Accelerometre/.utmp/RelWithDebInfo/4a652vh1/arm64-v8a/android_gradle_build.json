@@ -1,0 +1,39 @@
+{
+  "buildFiles": [
+    "/Users/aminekasdaoui/LostTemple_Modules/LostTemple_1_Accelerometre/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/CMakeLists.txt",
+    "/Users/aminekasdaoui/LostTemple_Modules/LostTemple_1_Accelerometre/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/src/main/cpp/GameActivity/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/aminekasdaoui/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/aminekasdaoui/LostTemple_Modules/LostTemple_1_Accelerometre/.utmp/RelWithDebInfo/4a652vh1/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/aminekasdaoui/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/aminekasdaoui/LostTemple_Modules/LostTemple_1_Accelerometre/.utmp/RelWithDebInfo/4a652vh1/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "game::@d02bb112ea9f9c2ed29f": {
+      "toolchain": "toolchain",
+      "abi": "arm64-v8a",
+      "artifactName": "game",
+      "output": "/Users/aminekasdaoui/LostTemple_Modules/LostTemple_1_Accelerometre/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/4a652vh1/obj/arm64-v8a/libgame.so",
+      "runtimeFiles": []
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Applications/Unity/Hub/Editor/6000.6.5f1/PlaybackEngines/AndroidPlayer/NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Applications/Unity/Hub/Editor/6000.6.5f1/PlaybackEngines/AndroidPlayer/NDK/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}

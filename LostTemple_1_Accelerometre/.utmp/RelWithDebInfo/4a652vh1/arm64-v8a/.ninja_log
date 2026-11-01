@@ -1,0 +1,10 @@
+# ninja log v5
+2	2015	1793556053489242391	GameActivity/CMakeFiles/game.dir/UGAInputKeyEvent.cpp.o	3f9c2fd1b1da0a0e
+1	2033	1793556053502563113	GameActivity/CMakeFiles/game.dir/UGAEntry.cpp.o	605b79303312e228
+2	2090	1793556053551287996	GameActivity/CMakeFiles/game.dir/UGAInputMotionEvent.cpp.o	2018e887f9e38b9
+1	2148	1793556053621366318	GameActivity/CMakeFiles/game.dir/UGADebug.cpp.o	5aebeae8aed8e39e
+0	2175	1793556053649179804	GameActivity/CMakeFiles/game.dir/UGAConfiguration.cpp.o	6f6c31976dabc228
+3	2303	1793556053775776142	GameActivity/CMakeFiles/game.dir/UGASoftKeyboard.cpp.o	393f2f9daeaaf858
+1	2568	1793556054039085286	GameActivity/CMakeFiles/game.dir/UGAInput.cpp.o	2e3620d33f35f6a0
+0	2728	1793556054203412829	GameActivity/CMakeFiles/game.dir/UGAApplication.cpp.o	1d79fede2efee44e
+2728	2823	1793556054299638136	/Users/aminekasdaoui/LostTemple_Modules/LostTemple_1_Accelerometre/Library/Bee/Android/Prj/IL2CPP/Gradle/unityLibrary/build/intermediates/cxx/RelWithDebInfo/4a652vh1/obj/arm64-v8a/libgame.so	ae3e513090c768a9

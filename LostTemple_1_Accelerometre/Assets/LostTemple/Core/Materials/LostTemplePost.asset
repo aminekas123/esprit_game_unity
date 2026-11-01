@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!114 &-6557314842379123895
+--- !u!114 &-5869794739764193758
 MonoBehaviour:
   m_ObjectHideFlags: 3
   m_CorrespondingSourceObject: {fileID: 0}
@@ -28,7 +28,7 @@ MonoBehaviour:
   rounded:
     m_OverrideState: 1
     m_Value: 0
---- !u!114 &-5799841896946134816
+--- !u!114 &-78635033011628287
 MonoBehaviour:
   m_ObjectHideFlags: 3
   m_CorrespondingSourceObject: {fileID: 0}
@@ -81,11 +81,11 @@ MonoBehaviour:
   m_Name: LostTemplePost
   m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.VolumeProfile
   components:
-  - {fileID: 432281280547931629}
-  - {fileID: -6557314842379123895}
-  - {fileID: -5799841896946134816}
-  - {fileID: 7582643816520001034}
---- !u!114 &432281280547931629
+  - {fileID: 6005330280615837632}
+  - {fileID: -5869794739764193758}
+  - {fileID: -78635033011628287}
+  - {fileID: 7655058318054224989}
+--- !u!114 &6005330280615837632
 MonoBehaviour:
   m_ObjectHideFlags: 3
   m_CorrespondingSourceObject: {fileID: 0}
@@ -135,7 +135,7 @@ MonoBehaviour:
   dirtIntensity:
     m_OverrideState: 1
     m_Value: 0
---- !u!114 &7582643816520001034
+--- !u!114 &7655058318054224989
 MonoBehaviour:
   m_ObjectHideFlags: 3
   m_CorrespondingSourceObject: {fileID: 0}
