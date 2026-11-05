@@ -57,6 +57,20 @@ namespace LostTemple
             bestZ = spawn.position.z;
         }
 
+        /// <summary>Échec imposé par un autre élément (la boule rivale a atteint le départ) : retour au départ.</summary>
+        public void Fail(string message)
+        {
+            if (!IsActive) return;
+            falls++;
+            GameManager.Instance.AddFall();
+            Audio.Play(Sfx.Fail);
+            UIManager.Instance.ShowToast(message);
+            Respawn();
+        }
+
+        /// <summary>La boule rivale vient d'être percutée : compte comme une progression (pas d'indice).</summary>
+        public void NotifyHit() => ReportProgress();
+
         /// <summary>Plateau à trous : la boule est tombée dans un trou.</summary>
         public void OnBallFellInHole()
         {
