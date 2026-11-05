@@ -71,6 +71,7 @@ namespace LostTemple
         void Update()
         {
             if (puzzle == null) return;
+            if (puzzle.IsGameOver) return;
             if (puzzle.IsActive && !running) { running = true; ResetRival(); }
             if (!puzzle.IsActive && running) { running = false; if (agent.enabled) agent.isStopped = true; if (puzzle.IsDone) StartCoroutine(Vanish()); }
             if (!running) return;
@@ -79,10 +80,10 @@ namespace LostTemple
             {
                 Vector3 d = transform.position - playerStart.position;
                 d.y = 0f;
-                if (d.magnitude < 0.6f)
+                if (d.magnitude < 0.6f && !puzzle.IsGameOver)
                 {
-                    puzzle.Fail("La boule rouge a atteint votre départ ! Percutez-la pour l'arrêter.");
-                    ResetRival();
+                    agent.isStopped = true;
+                    puzzle.GameOver("La boule rouge a atteint votre point de départ !\n\nPercutez-la avec élan pour la faire tomber avant qu'elle n'y arrive.");
                 }
             }
             else if (transform.position.y < killY)
