@@ -7,6 +7,7 @@ namespace LostTemple
     /// Salle 2d — Boussole : une luciole avance toute seule dans un labyrinthe au sol. Sa direction suit
     /// le cap du téléphone (relatif au cap de départ) : on la dirige en tournant sur soi-même.
     /// Si elle touche un mur, elle revient au départ.
+    /// Course : une boule rouge (FireflyHunter, NavMeshAgent) la poursuit ; si elle la rattrape, une vie est perdue.
     /// </summary>
     public class FireflyMazePuzzle : PuzzleStep
     {
@@ -18,6 +19,7 @@ namespace LostTemple
         public float speed = 0.9f;
         public float radius = 0.2f;
         public float goalRadius = 0.45f;
+        public FireflyHunter hunter;
 
         float startHeading;
         float pauseUntil;
@@ -47,6 +49,7 @@ namespace LostTemple
             orb.position = start.position;
             pauseUntil = Time.time + 1.2f;   // laisse le temps de s'orienter avant de repartir
             bestDist = Vector3.Distance(start.position, goal.position);
+            if (hunter != null) hunter.ResetHunter(1.2f);
         }
 
         void Update()
@@ -65,12 +68,33 @@ namespace LostTemple
 
             float d = Vector3.Distance(orb.position, goal.position);
             if (d < bestDist - 0.4f) { bestDist = d; ReportProgress(); }
-            if (d < goalRadius) Complete();
+            if (d < goalRadius) { if (hunter != null) hunter.Hide(); Complete(); }
+        }
+
+        /// <summary>La boule rouge a rattrapé la luciole : une vie en moins, puis la course recommence.</summary>
+        public void Caught()
+        {
+            pauseUntil = float.MaxValue;
+            Audio.Play(Sfx.Fail);
+            CameraRig.Shake(0.3f);
+            UIManager.Instance.FlashDamage();
+
+            var gm = GameManager.Instance;
+            gm.AddFall();
+            if (!gm.DemoMode && !gm.LoseLife())
+            {
+                UIManager.Instance.ShowMessage("RATTRAPÉE", "La boule rouge a attrapé la luciole.\n\nVous n'avez plus de vies : la salle recommence.", "Recommencer",
+                    () => { gm.RefillLives(); gm.RestartRoom(); });
+                return;
+            }
+            string lives = gm.DemoMode ? "" : $"\n\n−1 vie (il vous en reste {gm.Lives}).";
+            UIManager.Instance.ShowMessage("RATTRAPÉE !", $"La boule rouge a attrapé la luciole !{lives}\n\nTournez plus vite pour la distancer.", "Réessayer", Respawn);
         }
 
         IEnumerator Bump()
         {
             pauseUntil = float.MaxValue;
+            if (hunter != null) hunter.Stop();
             Audio.Play(Sfx.Fail);
             CameraRig.Shake(0.1f);
             UIManager.Instance.ShowToast("La luciole s'est cognée ! Tournez plus tôt pour changer de direction.");
