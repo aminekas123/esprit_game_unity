@@ -185,41 +185,13 @@ namespace LostTemple.EditorTools
         static Scene BuildRoom6()
         {
             var (scene, root, cam) = NewRoom("Room6", new Vector3(0, 10f, -16f), new Vector3(0, 0, -6f), 60f, new Color(0.06f, 0.065f, 0.12f));
-            Box("Floor Front", root, new Vector3(0, -0.25f, -6f), new Vector3(14f, 0.5f, 12f), Stone);
-            Box("Floor Back", root, new Vector3(0, -0.25f, 9f), new Vector3(14f, 0.5f, 6f), Stone);
-            Box("Chasm", root, new Vector3(0, -7f, 3f), new Vector3(14f, 1f, 6f), Pit);
-            Box("Chasm Edge Front", root, new Vector3(0, -0.3f, 0.05f), new Vector3(14f, 0.6f, 0.15f), DarkStone, false);
-            Box("Chasm Edge Back", root, new Vector3(0, -0.3f, 5.95f), new Vector3(14f, 0.6f, 0.15f), DarkStone, false);
+            Box("Floor", root, new Vector3(0, -0.25f, 0f), new Vector3(14f, 0.5f, 24f), Stone);
             Shell(root, 14f, -12f, 12f, false);
 
             SpikeTrap(root, new Vector3(0, 0, -7f), new Vector2(14f, 1.6f), 0f, 3f);
 
-            // Pont de cristal : invisible et non solide tant que la lumière ne l'a pas révélé
-            var crystal = Mat("Crystal", new Color(0.35f, 0.6f, 0.8f), 0.2f, 0.95f, true);
-            var parts = new List<Renderer>();
-            var solids = new List<Collider>();
-            for (int i = 0; i < 6; i++)
-            {
-                var seg = Box("Crystal Bridge " + (i + 1), root, new Vector3(0, -0.15f, 0.5f + i), new Vector3(2.6f, 0.3f, 0.96f), crystal);
-                parts.Add(seg.GetComponent<Renderer>());
-                solids.Add(seg.GetComponent<Collider>());
-            }
-            var rl = new GameObject("Reveal Light").AddComponent<Light>();
-            rl.transform.SetParent(root, false);
-            rl.transform.localPosition = new Vector3(0, 2f, 3f);
-            rl.type = LightType.Point; rl.color = new Color(0.5f, 0.85f, 1f); rl.range = 7f; rl.intensity = 0f;
-
-            var light = root.gameObject.AddComponent<LightRevealPuzzle>();
-            light.sensor = SensorKind.Light;
-            light.objective = "Révélez le pont de cristal au-dessus du gouffre";
-            light.tutorial = "Un pont invisible enjambe le gouffre. Il n'apparaît qu'avec un changement de lumière.\n\nCouvrez le haut de l'écran avec la main pour faire l'obscurité, ou éclairez-le avec une lampe, et maintenez quelques secondes.";
-            light.hint = "Le capteur de lumière est près de la caméra avant. Couvrez-le complètement ou approchez-le d'une lampe.";
-            light.hiddenParts = parts.ToArray(); light.solidParts = solids.ToArray(); light.revealLight = rl;
-            light.fxAnchor = Empty("Bridge FX", root, new Vector3(0, 0.5f, 3f));
-            light.cameraPose = Pose("Cam Bridge", root, new Vector3(-3f, 6f, -4f), new Vector3(0, 0f, 3.5f));
-
             Relic(root, new Vector3(-6f, 0.8f, -10.5f));
-            Relic(root, new Vector3(0f, 0.9f, 3f));
+            Relic(root, new Vector3(-5f, 0.8f, 3f));
             Relic(root, new Vector3(6f, 0.8f, 10.5f));
 
             foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 9f), new Vector3(6.7f, 2.6f, 9f) })
@@ -227,39 +199,24 @@ namespace LostTemple.EditorTools
 
             var door = Door(root, new Vector3(0f, 1.5f, 11.75f));
             var exit = Exit(root, new Vector3(0f, 0f, 10.7f));
-            var st = MakeStation(root, "Gouffre", new Vector3(0f, 0f, -1.5f), light);
             var player = Explorer(root, new Vector3(0f, 0.05f, -10.5f), 0f, true, true);
             Secret(root, new Vector3(5.5f, 0.9f, -4f), 5);
             FollowCamera(cam, player);
 
-            // Amélioration : code lumineux (ombres courtes ● et longues ▬) à reproduire pour ouvrir la porte
-            var code = root.gameObject.AddComponent<LightCodePuzzle>();
-            code.sensor = SensorKind.Light;
-            code.objective = "Reproduisez le code lumineux au-dessus de la porte";
-            code.tutorial = "La porte ne s'ouvre qu'avec le bon code d'ombres, affiché au-dessus d'elle.\n\n● = ombre brève : couvrez le capteur moins d'une seconde.\n▬ = ombre longue : couvrez-le plus d'une seconde.\n\nRetirez bien la main entre deux ombres.";
-            code.hint = "Comptez « un » pour une ombre brève, « un, deux » pour une ombre longue, puis découvrez complètement le capteur.";
-            var codeLampMat = Mat("CodeLamp", new Color(0.12f, 0.13f, 0.16f), 0.2f, 0.8f, true);
-            code.lamps = new Renderer[4];
-            for (int i = 0; i < 4; i++)
-                code.lamps[i] = Prim(PrimitiveType.Sphere, "Code Lamp " + (i + 1), root, new Vector3(-1.5f + i, 4.3f, 11.85f), Vector3.one * 0.35f, codeLampMat, false).GetComponent<Renderer>();
-            code.codeText = Text3D("Code Text", root, new Vector3(0f, 4.85f, 11.85f), "", 0.08f, new Color(0.7f, 0.9f, 1f));
-            code.fxAnchor = code.lamps[3].transform;
-            code.cameraPose = Pose("Cam Code", root, new Vector3(0f, 2.8f, 6.2f), new Vector3(0f, 3.8f, 12f));
-            var st2 = MakeStation(root, "Code", new Vector3(0f, 0f, 8.2f), code);
-
-            // Épreuve 3 : un grand brasier devant la porte, éteint en couvrant le capteur de lumière
+            // Unique épreuve : un grand brasier devant la porte, éteint en couvrant le capteur de lumière 5 secondes
             var fire = BigFire(root, new Vector3(0f, 0f, 10.2f));
             var firePuzzle = root.gameObject.AddComponent<BigFirePuzzle>();
             firePuzzle.sensor = SensorKind.Light;
+            firePuzzle.coverTime = 5f;
             firePuzzle.objective = "Éteignez le grand brasier qui bloque la porte";
-            firePuzzle.tutorial = "Un énorme brasier bloque la sortie.\n\nPosez la main sur le capteur de lumière (en haut de l'écran) pour le priver de lumière : le feu faiblit. Gardez la main environ 3 secondes jusqu'à ce qu'il s'éteigne.\n\nSi vous retirez la main trop tôt, le feu reprend !";
+            firePuzzle.tutorial = "Un énorme brasier bloque la sortie.\n\nPosez toute la main sur le capteur de lumière (en haut de l'écran) pour le priver de lumière : le feu faiblit. Gardez la main 5 secondes et il disparaît.\n\nSi vous retirez la main trop tôt, le feu reprend !";
             firePuzzle.hint = "Couvrez bien tout le haut du téléphone, sans laisser passer de lumière, et ne bougez plus.";
             firePuzzle.flames = fire.flames; firePuzzle.steam = fire.steam; firePuzzle.fireLight = fire.light; firePuzzle.blocker = fire.blocker;
             firePuzzle.fxAnchor = fire.root;
             firePuzzle.cameraPose = Pose("Cam Fire", root, new Vector3(1.6f, 2.6f, 6.4f), new Vector3(0f, 1.6f, 10.2f));
-            var st3 = MakeStation(root, "Brasier", new Vector3(3f, 0f, 8.6f), firePuzzle);
+            var st = MakeStation(root, "Brasier", new Vector3(3f, 0f, 8.6f), firePuzzle);
 
-            AddRoomManager(root, 5, door, exit, new PuzzleStep[] { light, code, firePuzzle }, new[] { st, st2, st3 });
+            AddRoomManager(root, 5, door, exit, new PuzzleStep[] { firePuzzle }, new[] { st });
             return scene;
         }
     }

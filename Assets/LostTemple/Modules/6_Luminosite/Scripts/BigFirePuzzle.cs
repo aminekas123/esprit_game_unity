@@ -14,7 +14,7 @@ namespace LostTemple
         public Light fireLight;
         public Collider blocker;
         [Tooltip("Secondes de capteur couvert pour éteindre complètement le feu.")]
-        public float coverTime = 3f;
+        public float coverTime = 5f;
         [Tooltip("Secondes pour que le feu reprenne entièrement quand on retire la main.")]
         public float regrowTime = 4f;
 
