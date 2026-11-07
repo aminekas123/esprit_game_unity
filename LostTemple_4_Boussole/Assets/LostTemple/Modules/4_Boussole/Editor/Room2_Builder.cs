@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEditor;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
@@ -138,6 +140,34 @@ namespace LostTemple.EditorTools
             maze.hint = "Pivotez d'un quart de tour à chaque virage, juste avant le muret.";
             maze.orb = orb.transform; maze.arrow = arrow; maze.start = fireflyStart; maze.goal = fireflyGoal; maze.walls = mazeWalls.ToArray();
             maze.fxAnchor = fireflyGoal;
+            // Boule chasseuse : NavMeshAgent qui poursuit la luciole dans le labyrinthe (course)
+            var navZone = Empty("Firefly NavMesh", root, new Vector3(3f, 0f, 5.6f));
+            var navSurface = navZone.gameObject.AddComponent<NavMeshSurface>();
+            navSurface.collectObjects = CollectObjects.Volume;
+            navSurface.center = new Vector3(0f, 0.5f, 0f);
+            navSurface.size = new Vector3(6.1f, 1.5f, 4.1f);
+            navSurface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            var hunterMat = Mat("HunterBall", new Color(0.85f, 0.12f, 0.08f), 0.6f, 0.8f, true);
+            hunterMat.SetColor("_EmissionColor", new Color(1f, 0.15f, 0.05f) * 1.5f);
+            var hunterStart = Empty("Hunter Start", root, new Vector3(1.4f, 0.2f, 4.1f));
+            var hunterGo = Prim(PrimitiveType.Sphere, "Hunter Ball", root, hunterStart.localPosition, Vector3.one * 0.4f, hunterMat, false);
+            hunterGo.AddComponent<NavMeshAgent>();
+            var hunterLight = new GameObject("Hunter Light").AddComponent<Light>();
+            hunterLight.transform.SetParent(hunterGo.transform, false);
+            hunterLight.type = LightType.Point; hunterLight.color = new Color(1f, 0.25f, 0.1f); hunterLight.range = 2.5f; hunterLight.intensity = 1.5f; hunterLight.shadows = LightShadows.None;
+            var hunter = hunterGo.AddComponent<FireflyHunter>();
+            hunter.puzzle = maze; hunter.maze = navSurface; hunter.hunterStart = hunterStart;
+            maze.hunter = hunter;
+            maze.tutorial += "\n\nAttention : une boule rouge part juste après vous et poursuit la luciole. C'est une course : atteignez l'anneau avant qu'elle vous rattrape !";
+
+            // Les murets sont « non marchables » pour le NavMesh : la chasseuse doit les contourner
+            foreach (var w in mazeWalls)
+            {
+                var mod = w.gameObject.AddComponent<NavMeshModifier>();
+                mod.overrideArea = true;
+                mod.area = 1;   // Not Walkable
+            }
+
             maze.cameraPose = Pose("Cam Firefly", root, new Vector3(3f, 7.5f, 1.2f), new Vector3(3f, 0f, 5.6f));
             var stMaze = MakeStation(root, "Luciole", new Vector3(-1.1f, 0f, 5.6f), maze);
 

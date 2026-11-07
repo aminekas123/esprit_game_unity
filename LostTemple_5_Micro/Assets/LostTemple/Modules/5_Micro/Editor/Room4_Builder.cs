@@ -64,20 +64,6 @@ namespace LostTemple.EditorTools
             wake.fxAnchor = monster.head;
             wake.cameraPose = Pose("Cam Monster", root, new Vector3(0, 4.5f, -2.5f), new Vector3(0, 2.6f, 8f));
 
-            // Amélioration : reproduire un rythme en tapant dans ses mains pour hypnotiser le monstre
-            var clap = root.gameObject.AddComponent<ClapRhythmPuzzle>();
-            clap.sensor = SensorKind.Microphone;
-            clap.objective = "Hypnotisez le monstre : reproduisez le rythme en tapant dans vos mains";
-            clap.tutorial = "Le monstre est réveillé ! Le temple va jouer un rythme (des groupes de coups).\n\nÉcoutez, puis reproduisez-le en tapant dans vos mains près du téléphone : les lampes au sol comptent vos claquements. Marquez une pause entre deux groupes.";
-            clap.hint = "Tapez fort et net, puis attendez une seconde entre deux groupes de claquements.";
-            clap.monster = monster;
-            var beatMat = Mat("BeatLamp", new Color(0.12f, 0.13f, 0.16f), 0f, 0.6f, true);
-            clap.beatLamps = new Renderer[5];
-            for (int i = 0; i < 5; i++)
-                clap.beatLamps[i] = Prim(PrimitiveType.Cylinder, "Beat Lamp " + (i + 1), root, new Vector3(-2.4f + i * 1.2f, 0.04f, -0.2f), new Vector3(0.5f, 0.03f, 0.5f), beatMat, false).GetComponent<Renderer>();
-            clap.fxAnchor = monster.head;
-            clap.cameraPose = wake.cameraPose;
-
             var push = root.gameObject.AddComponent<VoiceBallPuzzle>();
             push.sensor = SensorKind.Microphone;
             push.objective = "Poussez la boule d'énergie avec votre voix pour vaincre le monstre";
@@ -102,7 +88,24 @@ namespace LostTemple.EditorTools
             FollowCamera(cam, player);
             Quiet(root, new Vector3(0f, 0f, -8.6f), new Vector3(14f, 3f, 3f));
             Secret(root, new Vector3(5.5f, 0.9f, 5f), 3);
-            AddRoomManager(root, 3, door, exit, new PuzzleStep[] { wake, clap, push }, new[] { st, null, null });
+
+            // Épreuve 3 : lire une phrase en anglais à voix haute pour ouvrir la porte
+            var plaqueBox = Box("Speech Plaque", root, new Vector3(6.95f, 2.4f, 6f), new Vector3(0.1f, 2.2f, 3.6f), Mat("SpeechPlaque", new Color(0.08f, 0.07f, 0.07f), 0.1f, 0.3f, true), false);
+            Box("Speech Plaque Frame", root, new Vector3(6.98f, 2.4f, 6f), new Vector3(0.05f, 2.5f, 3.9f), Gold, false);
+            var plaqueText = Text3D("Speech Text", root, new Vector3(6.85f, 2.45f, 6f), "The golden key\nbelongs to me", 0.05f, new Color(1f, 0.95f, 0.8f));
+            plaqueText.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            var speak = root.gameObject.AddComponent<SpeakSentencePuzzle>();
+            speak.sensor = SensorKind.Microphone;
+            speak.objective = "Lisez à voix haute la phrase en anglais";
+            speak.tutorial = "Une phrase en ANGLAIS apparaît sur la plaque. Lisez-la à voix haute, clairement, près du micro du téléphone.\n\nSur le téléphone, la reconnaissance vocale vérifie les mots prononcés (au moins 70 % de bons mots). Si elle ne comprend pas, elle vous réécoute.\n\nQuand la phrase est reconnue, la porte s'ouvre.";
+            speak.hint = "Parlez lentement et articulez chaque mot. Approchez le bas du téléphone de votre bouche.";
+            speak.plaque = plaqueText;
+            speak.plaqueRenderer = plaqueBox.GetComponent<Renderer>();
+            speak.fxAnchor = plaqueText.transform;
+            speak.cameraPose = Pose("Cam Speech", root, new Vector3(0.8f, 3.2f, 6f), new Vector3(6.9f, 2.4f, 6f));
+            var stSpeak = MakeStation(root, "Phrase", new Vector3(4.4f, 0f, 9f), speak);   // sur le côté : l'explorateur ne cache pas la plaque
+
+            AddRoomManager(root, 3, door, exit, new PuzzleStep[] { wake, push, speak }, new[] { st, null, stSpeak });
             return scene;
         }
     }
