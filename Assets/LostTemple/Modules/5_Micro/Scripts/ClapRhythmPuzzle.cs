@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace LostTemple
 {
@@ -21,7 +22,7 @@ namespace LostTemple
         readonly List<int> groups = new List<int>();
         int count, lit;
         float lastOnset = -10f;
-        bool wasLoud, listening;
+        bool armed, listening;
 
         void Reset() { sensor = SensorKind.Microphone; }
 
@@ -38,7 +39,29 @@ namespace LostTemple
         protected override void OnBegin()
         {
             pattern = patterns[Random.Range(0, patterns.Length)];
+            objective = $"Rythme à taper : {PatternText()}   (pause d'1 s entre les groupes)";
+            UIManager.Instance.SetStep(this);
             StartCoroutine(Demo());
+        }
+
+        /// <summary>Le rythme écrit à l'écran, ex. « ●● · ●●● ».</summary>
+        string PatternText()
+        {
+            var parts = new string[pattern.Length];
+            for (int i = 0; i < pattern.Length; i++) parts[i] = new string('●', pattern[i]);
+            return string.Join("  ·  ", parts);
+        }
+
+        /// <summary>
+        /// Volume pour compter les claquements : volume INSTANTANÉ du micro (≈30 ms, sans lissage),
+        /// rapporté au seuil. Le niveau lissé redescend trop lentement et fusionnerait deux claps rapprochés.
+        /// Commandes de secours : bouton « Souffler » ou touche Espace (un appui = un clap).
+        /// </summary>
+        float ClapLevel()
+        {
+            float fallback = (Sensors.FallbackBlow || (Keyboard.current != null && Keyboard.current.spaceKey.isPressed)) ? 1.5f : 0f;
+            if (Sensors.UsesFallback(SensorKind.Microphone) || !Sensors.MicRunning) return fallback;
+            return Mathf.Max(fallback, Sensors.MicInstant / Mathf.Max(0.0001f, Sensors.MicThreshold));
         }
 
         /// <summary>Le temple joue le rythme à reproduire.</summary>
@@ -63,7 +86,8 @@ namespace LostTemple
                 yield return new WaitForSeconds(groupGap);
             }
             foreach (var l in beatLamps) SetGlow(l, Color.black, 0f);
-            yield return new WaitForSeconds(0.4f);   // laisser le son du temple s'éteindre avant d'écouter
+            yield return new WaitForSeconds(0.5f);   // laisser le son du temple s'éteindre avant d'écouter
+            armed = false;
             listening = true;
             UIManager.Instance.ShowToast("À vous ! Reproduisez le rythme.");
         }
@@ -71,16 +95,17 @@ namespace LostTemple
         void Update()
         {
             if (!IsActive || !listening) return;
-            bool loud = Sensors.GetSoundLevel01() >= 1f;
-            if (loud && !wasLoud && Time.time - lastOnset > 0.12f)
+            float level = ClapLevel();
+            if (!armed && level < 0.5f) armed = true;            // le son est retombé : prêt pour le clap suivant
+            if (armed && level >= 1f && Time.time - lastOnset > 0.12f)
             {
+                armed = false;
                 count++;
                 lastOnset = Time.time;
                 if (lit < beatLamps.Length) SetGlow(beatLamps[lit], new Color(1f, 0.8f, 0.3f), 3f);
                 lit++;
                 ReportProgress();
             }
-            wasLoud = loud;
 
             if (count > 0 && Time.time - lastOnset > groupGap)
             {
@@ -90,12 +115,13 @@ namespace LostTemple
                 if (i >= pattern.Length || groups[i] != pattern[i])
                 {
                     Audio.Play(Sfx.Fail);
-                    UIManager.Instance.ShowToast("Mauvais rythme… le temple le rejoue.");
+                    UIManager.Instance.ShowToast($"Mauvais rythme : {groups[i]} clap(s) au lieu de {(i < pattern.Length ? pattern[i] : 0)}. Le temple le rejoue.");
                     StartCoroutine(Demo());
                     return;
                 }
-                Audio.Play(Sfx.Tick, 0.5f);
+                // Pas de son ici : le micro le prendrait pour un claquement
                 if (groups.Count == pattern.Length) Complete();
+                else UIManager.Instance.ShowToast($"Groupe {groups.Count}/{pattern.Length} réussi !");
             }
         }
 

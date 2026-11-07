@@ -74,7 +74,7 @@ namespace LostTemple.EditorTools
             var beatMat = Mat("BeatLamp", new Color(0.12f, 0.13f, 0.16f), 0f, 0.6f, true);
             clap.beatLamps = new Renderer[5];
             for (int i = 0; i < 5; i++)
-                clap.beatLamps[i] = Prim(PrimitiveType.Cylinder, "Beat Lamp " + (i + 1), root, new Vector3(-2.4f + i * 1.2f, 0.04f, -0.2f), new Vector3(0.5f, 0.03f, 0.5f), beatMat, false).GetComponent<Renderer>();
+                clap.beatLamps[i] = Prim(PrimitiveType.Sphere, "Beat Lamp " + (i + 1), root, new Vector3(-1.6f + i * 0.8f, 0.35f, 5.4f), Vector3.one * 0.38f, beatMat, false).GetComponent<Renderer>();   // devant le monstre, dans le champ de la caméra
             clap.fxAnchor = monster.head;
             clap.cameraPose = wake.cameraPose;
 
