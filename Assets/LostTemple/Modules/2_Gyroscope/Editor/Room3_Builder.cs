@@ -38,7 +38,7 @@ namespace LostTemple.EditorTools
             statueAlign.tutorial = "Tenez le téléphone devant vous et faites-le pivoter comme un volant : la statue en surbrillance tourne avec lui.\n\nAlignez son rayon doré sur le symbole lumineux, puis attendez qu'il se fige.";
             statueAlign.hint = "Tournez lentement le téléphone vers la gauche ou la droite, sans le pencher vers l'avant.";
             statueAlign.fxAnchor = Empty("Statues FX", root, new Vector3(0, 1.5f, 4.5f));
-            statueAlign.cameraPose = Pose("Cam Statues", root, new Vector3(0, 10f, -3f), new Vector3(0, 0, 4.8f));
+            statueAlign.cameraPose = Pose("Cam Statues", root, new Vector3(0, 8.5f, -1f), new Vector3(0, 0, 4.6f));
             var xs = new[] { -4f, 0f, 4f };
             statueAlign.targetAngles = new[] { 60f, -90f, 150f };
             statueAlign.statues = new Transform[3]; statueAlign.beams = new Renderer[3]; statueAlign.targets = new Renderer[3];
