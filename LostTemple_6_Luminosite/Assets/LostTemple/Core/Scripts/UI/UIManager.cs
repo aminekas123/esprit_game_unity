@@ -665,7 +665,7 @@ namespace LostTemple
                     Single("Maintenir = couvrir le capteur", v => sm.FallbackCover = v);
                     break;
                 case SensorKind.Light:
-                    Single("Maintenir = allumer la lampe", v => sm.FallbackLight = v ? 1f : 0f);
+                    Pair("Lampe (lumière forte)", v => sm.FallbackLight = v ? 1f : 0f, "Cacher le capteur", v => sm.FallbackDark = v);
                     break;
             }
         }

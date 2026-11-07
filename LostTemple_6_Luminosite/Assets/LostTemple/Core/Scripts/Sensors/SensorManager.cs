@@ -30,6 +30,7 @@ namespace LostTemple
         [NonSerialized] public bool FallbackBlow;
         [NonSerialized] public bool FallbackCover;
         [NonSerialized] public float FallbackLight;       // 0 .. 1
+        [NonSerialized] public bool FallbackDark;         // capteur de lumière caché (main)
 
         // --- État interne ---
         Vector3 accelFiltered;
@@ -287,6 +288,8 @@ namespace LostTemple
         }
 
         public float MicRawLevel => micLevel;
+        /// <summary>Volume instantané (≈30 ms, sans lissage) : sert à compter des claquements de mains rapprochés.</summary>
+        public float MicInstant { get; private set; }
         public float MicThreshold => Mathf.Max(MicNoiseFloor * 3f, 0.03f) / MicSensitivity;
 
         /// <summary>Vrai si le capteur de proximité est couvert (main près de l'écouteur).</summary>
@@ -309,10 +312,35 @@ namespace LostTemple
         /// </summary>
         public float GetLightChange01(float baselineLux)
         {
-            float fb = Mathf.Max(FallbackLight, IsKey(Key.L) ? 1f : 0f);
+            float fb = Mathf.Max(FallbackLight, IsKey(Key.L) || IsLightHidden() ? 1f : 0f);
             if (UsesFallback(SensorKind.Light)) return fb;
             float ratio = (GetLux() + 1f) / (Mathf.Max(0f, baselineLux) + 1f);
             return Mathf.Max(fb, Mathf.Clamp01(Mathf.Abs(Mathf.Log(ratio)) / Mathf.Log(3f)));
+        }
+
+        /// <summary>Bouton « Cacher le capteur » ou touche K (commandes de secours).</summary>
+        bool IsLightHidden() => FallbackDark || IsKey(Key.K);
+
+        /// <summary>
+        /// Niveau de lumière absolu (échelle logarithmique) : 0 = noir (≈3 lux ou moins, capteur caché),
+        /// 1 = lumière forte (≈600 lux ou plus : lampe, torche, soleil). Une pièce éclairée donne ≈0,6-0,7.
+        /// Secours : bouton « Lampe » / touche L = 1, bouton « Cacher » / touche K = 0, sinon 0,5.
+        /// </summary>
+        public float GetLightLevel01()
+        {
+            if (IsLightHidden()) return 0f;
+            if (FallbackLight > 0.5f || IsKey(Key.L)) return 1f;
+            if (UsesFallback(SensorKind.Light)) return 0.5f;
+            float lux = Mathf.Max(0f, GetLux());
+            return Mathf.InverseLerp(Mathf.Log(4f), Mathf.Log(601f), Mathf.Log(lux + 1f));
+        }
+
+        /// <summary>Vrai si la main cache le capteur de lumière (lumière bien plus faible qu'au départ).</summary>
+        public bool IsLightCovered(float baselineLux)
+        {
+            if (IsLightHidden()) return true;
+            if (UsesFallback(SensorKind.Light)) return false;
+            return GetLux() < Mathf.Max(2f, baselineLux * 0.3f);
         }
 
         // ------------------------------------------------------------------ Microphone
@@ -386,6 +414,7 @@ namespace LostTemple
             float s = 0f;
             for (int i = 0; i < micBuffer.Length; i++) s += micBuffer[i] * micBuffer[i];
             float rms = Mathf.Sqrt(s / micBuffer.Length);
+            MicInstant = rms;
             // Montée rapide, descente lente : un souffle court reste détectable.
             micLevel = rms > micLevel ? Mathf.Lerp(micLevel, rms, 1f - Mathf.Exp(-30f * dt)) : Mathf.Lerp(micLevel, rms, 1f - Mathf.Exp(-6f * dt));
         }

@@ -17,6 +17,9 @@ namespace LostTemple.EditorTools
             string scene = Arg("-snapScene"), outDir = Arg("-snapOut"), points = Arg("-snapPoints");
             Directory.CreateDirectory(outDir);
             EditorSceneManager.OpenScene(scene);
+            // Les particules ne tournent pas dans l'éditeur : on les avance de 2 s pour les voir sur l'image
+            foreach (var ps in Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None))
+                if (ps.main.playOnAwake && ps.emission.enabled) ps.Simulate(2f, false, true);
             var cam = Camera.main;
             var rig = cam.GetComponent<CameraRig>();
             var rt = new RenderTexture(540, 960, 24);
