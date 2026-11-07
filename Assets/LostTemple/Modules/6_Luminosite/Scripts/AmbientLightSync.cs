@@ -10,6 +10,8 @@ namespace LostTemple
     public class AmbientLightSync : MonoBehaviour
     {
         public static bool Enabled => GameSettings.LightSync;
+        /// <summary>Mis à vrai par une épreuve qui règle elle-même la luminosité du jeu.</summary>
+        public static bool Suspended;
 
         /// <summary>S'installe tout seul à côté du GameManager (le Core n'a pas besoin de connaître ce module).</summary>
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -41,7 +43,7 @@ namespace LostTemple
         {
             float lux = SensorManager.Instance != null ? SensorManager.Instance.GetLux() : -1f;
             float target = 1f;
-            if (Enabled && lux >= 0f)
+            if (Enabled && !Suspended && lux >= 0f)
                 target = lux < 5f ? 0.6f : lux < 50f ? Mathf.Lerp(0.6f, 1f, (lux - 5f) / 45f) : lux > 1000f ? 1.2f : Mathf.Lerp(1f, 1.2f, (lux - 50f) / 950f);
             factor = Mathf.Lerp(factor, target, 1f - Mathf.Exp(-1.5f * Time.unscaledDeltaTime));
             if (baseFog <= 0f) return;

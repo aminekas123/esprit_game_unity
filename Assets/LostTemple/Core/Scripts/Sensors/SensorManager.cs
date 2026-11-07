@@ -30,6 +30,7 @@ namespace LostTemple
         [NonSerialized] public bool FallbackBlow;
         [NonSerialized] public bool FallbackCover;
         [NonSerialized] public float FallbackLight;       // 0 .. 1
+        [NonSerialized] public bool FallbackDark;         // capteur de lumière caché (main)
 
         // --- État interne ---
         Vector3 accelFiltered;
@@ -311,10 +312,35 @@ namespace LostTemple
         /// </summary>
         public float GetLightChange01(float baselineLux)
         {
-            float fb = Mathf.Max(FallbackLight, IsKey(Key.L) ? 1f : 0f);
+            float fb = Mathf.Max(FallbackLight, IsKey(Key.L) || IsLightHidden() ? 1f : 0f);
             if (UsesFallback(SensorKind.Light)) return fb;
             float ratio = (GetLux() + 1f) / (Mathf.Max(0f, baselineLux) + 1f);
             return Mathf.Max(fb, Mathf.Clamp01(Mathf.Abs(Mathf.Log(ratio)) / Mathf.Log(3f)));
+        }
+
+        /// <summary>Bouton « Cacher le capteur » ou touche K (commandes de secours).</summary>
+        bool IsLightHidden() => FallbackDark || IsKey(Key.K);
+
+        /// <summary>
+        /// Niveau de lumière par rapport à une référence : 0 = noir (capteur caché, lumière ÷4),
+        /// 0,5 = comme au départ, 1 = lumière forte (lampe, lumière ×4).
+        /// Secours : bouton « Lampe » / touche L = 1, bouton « Cacher » / touche K = 0.
+        /// </summary>
+        public float GetLightLevel01(float baselineLux)
+        {
+            if (IsLightHidden()) return 0f;
+            if (FallbackLight > 0.5f || IsKey(Key.L)) return 1f;
+            if (UsesFallback(SensorKind.Light)) return 0.5f;
+            float ratio = (GetLux() + 1f) / (Mathf.Max(0f, baselineLux) + 1f);
+            return Mathf.Clamp01(0.5f + Mathf.Log(ratio) / (2f * Mathf.Log(4f)));
+        }
+
+        /// <summary>Vrai si la main cache le capteur de lumière (lumière bien plus faible qu'au départ).</summary>
+        public bool IsLightCovered(float baselineLux)
+        {
+            if (IsLightHidden()) return true;
+            if (UsesFallback(SensorKind.Light)) return false;
+            return GetLux() < Mathf.Max(2f, baselineLux * 0.3f);
         }
 
         // ------------------------------------------------------------------ Microphone
