@@ -76,11 +76,12 @@ namespace LostTemple.EditorTools
             // Amélioration : miroirs à orienter pour guider un rayon de lumière jusqu'au cristal
             var mirrorMat = Mat("Mirror", new Color(0.85f, 0.9f, 0.95f), 1f, 0.95f);
             var ringMat = Mat("MirrorRing", new Color(0.2f, 0.18f, 0.12f), 0.3f, 0.5f, true);
-            var mirrors = new Transform[2];
-            var rings = new Renderer[2];
-            var mirrorPos = new[] { new Vector3(-3.5f, 0f, 7.5f), new Vector3(-3.5f, 0f, 10.5f) };
-            var mirrorYaw = new[] { 25f, 100f };
-            for (int i = 0; i < 2; i++)
+            // 3 miroirs en chaîne : source → miroir 1 → miroir 2 → miroir 3 → cristal
+            var mirrors = new Transform[3];
+            var rings = new Renderer[3];
+            var mirrorPos = new[] { new Vector3(-3.5f, 0f, 7.5f), new Vector3(-3.5f, 0f, 10.5f), new Vector3(2.5f, 0f, 10.5f) };
+            var mirrorYaw = new[] { 25f, 100f, 160f };   // mal orientés au départ (bonnes valeurs : -45°, 135°, -135°)
+            for (int i = 0; i < 3; i++)
             {
                 Prim(PrimitiveType.Cylinder, "Mirror Base", root, mirrorPos[i] + new Vector3(0, 0.15f, 0), new Vector3(0.9f, 0.15f, 0.9f), Carved);
                 rings[i] = Prim(PrimitiveType.Cylinder, "Mirror Ring", root, mirrorPos[i] + new Vector3(0, 0.31f, 0), new Vector3(1.1f, 0.01f, 1.1f), ringMat, false).GetComponent<Renderer>();
@@ -93,9 +94,9 @@ namespace LostTemple.EditorTools
             var source = Empty("Beam Source", root, new Vector3(-6.3f, 1.3f, 7.5f));
             source.rotation = Quaternion.LookRotation(Vector3.right);
             Box("Beam Emitter", root, new Vector3(-6.55f, 1.3f, 7.5f), new Vector3(0.4f, 0.4f, 0.4f), FlameLit, false);
-            var crystal = Box("Beam Crystal", root, new Vector3(5.6f, 1.3f, 10.5f), new Vector3(0.5f, 0.9f, 0.5f), Mat("CrystalTarget", new Color(0.9f, 0.8f, 0.5f), 0.3f, 0.95f, true));
+            var crystal = Box("Beam Crystal", root, new Vector3(2.5f, 1.3f, 7.2f), new Vector3(0.5f, 0.9f, 0.5f), Mat("CrystalTarget", new Color(0.9f, 0.8f, 0.5f), 0.3f, 0.95f, true));
             crystal.transform.rotation = Quaternion.Euler(0, 45, 0);
-            Prim(PrimitiveType.Cylinder, "Crystal Base", root, new Vector3(5.6f, 0.4f, 10.5f), new Vector3(0.8f, 0.4f, 0.8f), Carved);
+            Prim(PrimitiveType.Cylinder, "Crystal Base", root, new Vector3(2.5f, 0.4f, 7.2f), new Vector3(0.8f, 0.4f, 0.8f), Carved);
             var beamGo = new GameObject("Beam");
             beamGo.transform.SetParent(root, false);
             var lr = beamGo.AddComponent<LineRenderer>();
@@ -107,9 +108,9 @@ namespace LostTemple.EditorTools
 
             var mirrorsPuzzle = root.gameObject.AddComponent<MirrorBeamPuzzle>();
             mirrorsPuzzle.sensor = SensorKind.Gyroscope;
-            mirrorsPuzzle.objective = "Guidez le rayon de lumière jusqu'au cristal avec les miroirs";
-            mirrorsPuzzle.tutorial = "Un rayon jaillit du mur. Faites pivoter le téléphone comme un volant : le miroir sélectionné (anneau doré) tourne avec lui.\n\nUtilisez le bouton « Miroir suivant » pour changer de miroir. Quand le rayon touche le cristal, gardez-le une seconde.";
-            mirrorsPuzzle.hint = "Le premier miroir doit renvoyer le rayon vers le fond de la salle, le second vers le cristal à droite.";
+            mirrorsPuzzle.objective = "Guidez le rayon par les 3 miroirs jusqu'au cristal";
+            mirrorsPuzzle.tutorial = "Un rayon jaillit du mur de gauche. Il doit rebondir sur les 3 miroirs, l'un après l'autre, avant de toucher le cristal.\n\nFaites pivoter le téléphone comme un volant : le miroir sélectionné (anneau doré) tourne avec lui. Le bouton « Miroir suivant » (touche N) passe au miroir suivant.\n\nQuand le rayon touche le cristal, gardez-le une seconde.";
+            mirrorsPuzzle.hint = "Miroir 1 : renvoyez le rayon vers le fond. Miroir 2 : vers la droite, jusqu'au miroir 3. Miroir 3 : vers le cristal, devant lui.";
             mirrorsPuzzle.source = source; mirrorsPuzzle.mirrors = mirrors; mirrorsPuzzle.mirrorHighlights = rings;
             mirrorsPuzzle.target = crystal.GetComponent<Collider>(); mirrorsPuzzle.targetRenderer = crystal.GetComponent<Renderer>();
             mirrorsPuzzle.beam = lr;
