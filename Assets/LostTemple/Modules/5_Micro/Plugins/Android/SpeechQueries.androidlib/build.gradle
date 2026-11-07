@@ -1,0 +1,15 @@
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.losttempleteam.speechqueries'
+    compileSdk 34
+    defaultConfig {
+        minSdk 26
+    }
+    // Le manifeste est à la racine du dossier (et non dans src/main) : on l'indique à Gradle
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+        }
+    }
+}
