@@ -61,7 +61,7 @@ namespace LostTemple.EditorTools
 
             Relic(root, new Vector3(-6f, 0.8f, -10.5f));
             Relic(root, new Vector3(6f, 0.8f, -6f));
-            Relic(root, new Vector3(6f, 0.8f, 7.5f));
+            Relic(root, new Vector3(-6.2f, 0.8f, 1.5f));
 
             foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-6.7f, 2.6f, 10f), new Vector3(6.7f, 2.6f, 10f) })
                 Torch(root, t);
@@ -117,7 +117,28 @@ namespace LostTemple.EditorTools
             mirrorsPuzzle.cameraPose = Pose("Cam Mirrors", root, new Vector3(0f, 9.5f, 3.5f), new Vector3(0f, 1f, 9f));
             var st2 = MakeStation(root, "Miroirs", new Vector3(-1.2f, 0f, 6.8f), mirrorsPuzzle);
 
-            var rm3 = AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign, mirrorsPuzzle }, new[] { st, st2 });
+
+            // Épreuve 3 : « Jacques a dit » — tourner le téléphone dans le sens affiché, sinon c'est perdu
+            var tablet = Box("Direction Tablet", root, new Vector3(6.95f, 2.3f, 6f), new Vector3(0.1f, 2.2f, 3.4f), Mat("DirectionTablet", new Color(0.18f, 0.16f, 0.14f), 0.1f, 0.4f, true), false);
+            Box("Tablet Frame", root, new Vector3(6.98f, 2.3f, 6f), new Vector3(0.05f, 2.5f, 3.7f), Gold, false);
+            var arrow = Text3D("Direction Arrow", root, new Vector3(6.85f, 2.75f, 6f), "", 0.13f, new Color(1f, 0.8f, 0.35f));
+            arrow.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            var dirLampMat = Mat("DirectionLamp", new Color(0.12f, 0.13f, 0.16f), 0.2f, 0.8f, true);
+            var direction = root.gameObject.AddComponent<GyroDirectionPuzzle>();
+            direction.lamps = new Renderer[6];
+            for (int i = 0; i < 6; i++)
+                direction.lamps[i] = Prim(PrimitiveType.Sphere, "Direction Lamp " + (i + 1), root, new Vector3(6.85f, 1.55f, 7.25f - i * 0.5f), Vector3.one * 0.26f, dirLampMat, false).GetComponent<Renderer>();
+            direction.sensor = SensorKind.Gyroscope;
+            direction.objective = "Tournez le téléphone dans le sens indiqué";
+            direction.tutorial = "La tablette va afficher une direction : ◀ GAUCHE ou DROITE ▶.\n\nTenez le téléphone devant vous et tournez-le comme un volant dans ce sens. Puis revenez au centre et restez immobile : la direction suivante apparaît.\n\nATTENTION : si vous tournez dans le mauvais sens, ou trop lentement, c'est PERDU (−1 vie). Réussissez 6 directions d'affilée.";
+            direction.hint = "Attendez de bien lire la flèche avant de tourner, et revenez toujours au centre entre deux directions.";
+            direction.arrowText = arrow;
+            direction.tablet = tablet.GetComponent<Renderer>();
+            direction.fxAnchor = arrow.transform;
+            direction.cameraPose = Pose("Cam Directions", root, new Vector3(0.8f, 3.2f, 6f), new Vector3(6.9f, 2.2f, 6f));
+            var st3 = MakeStation(root, "Directions", new Vector3(4.6f, 0f, 6f), direction);
+
+            var rm3 = AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign, mirrorsPuzzle, direction }, new[] { st, st2, st3 });
             rm3.roomDoneListeners = new MonoBehaviour[] { MakeBoulder(root, 9.4f) };
             return scene;
         }
