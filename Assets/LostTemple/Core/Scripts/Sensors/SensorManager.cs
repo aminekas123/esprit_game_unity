@@ -322,17 +322,17 @@ namespace LostTemple
         bool IsLightHidden() => FallbackDark || IsKey(Key.K);
 
         /// <summary>
-        /// Niveau de lumière par rapport à une référence : 0 = noir (capteur caché, lumière ÷4),
-        /// 0,5 = comme au départ, 1 = lumière forte (lampe, lumière ×4).
-        /// Secours : bouton « Lampe » / touche L = 1, bouton « Cacher » / touche K = 0.
+        /// Niveau de lumière absolu (échelle logarithmique) : 0 = noir (≈3 lux ou moins, capteur caché),
+        /// 1 = lumière forte (≈600 lux ou plus : lampe, torche, soleil). Une pièce éclairée donne ≈0,6-0,7.
+        /// Secours : bouton « Lampe » / touche L = 1, bouton « Cacher » / touche K = 0, sinon 0,5.
         /// </summary>
-        public float GetLightLevel01(float baselineLux)
+        public float GetLightLevel01()
         {
             if (IsLightHidden()) return 0f;
             if (FallbackLight > 0.5f || IsKey(Key.L)) return 1f;
             if (UsesFallback(SensorKind.Light)) return 0.5f;
-            float ratio = (GetLux() + 1f) / (Mathf.Max(0f, baselineLux) + 1f);
-            return Mathf.Clamp01(0.5f + Mathf.Log(ratio) / (2f * Mathf.Log(4f)));
+            float lux = Mathf.Max(0f, GetLux());
+            return Mathf.InverseLerp(Mathf.Log(4f), Mathf.Log(601f), Mathf.Log(lux + 1f));
         }
 
         /// <summary>Vrai si la main cache le capteur de lumière (lumière bien plus faible qu'au départ).</summary>

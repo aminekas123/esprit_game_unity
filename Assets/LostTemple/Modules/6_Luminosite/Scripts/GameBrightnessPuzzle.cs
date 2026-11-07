@@ -54,8 +54,6 @@ namespace LostTemple
                 visible = () => IsActive,
             };
             HudGauge.Register(gauge);
-            if (!Sensors.UsesFallback(SensorKind.Light) && baseline < 8f)
-                UIManager.Instance.ShowToast("La pièce est très sombre : allumez une lumière pour mieux voir l'effet.");
         }
 
         /// <summary>Volume de post-traitement prioritaire : il remplace l'exposition du profil du temple.</summary>
@@ -86,7 +84,7 @@ namespace LostTemple
             if (!IsActive) return;
 
             // Luminosité inversée : beaucoup de lumière → jeu sombre, peu de lumière → jeu lumineux
-            float level = Sensors.GetLightLevel01(baseline);
+            float level = Sensors.GetLightLevel01();
             float target = 1f - level;
             brightness = Mathf.MoveTowards(brightness, target, Time.deltaTime * 1.2f);
             color.postExposure.Override(Mathf.Lerp(minExposure, maxExposure, brightness));
@@ -105,7 +103,8 @@ namespace LostTemple
             if (screenText != null)
             {
                 string state = brightness <= 0.12f ? "LUMIERE FORTE\njeu au minimum" : brightness >= 0.88f ? "OBSCURITE\njeu au maximum" : "Luminosite du jeu";
-                screenText.text = $"{state}\n{brightness * 100f:0} %";
+                string lux = Sensors.GetLux() >= 0f ? $"  ({Sensors.GetLux():0} lux)" : "";
+                screenText.text = $"{state}\n{brightness * 100f:0} %{lux}";
             }
             SetGlow(screen, new Color(1f, 0.95f, 0.8f), 0.05f + brightness * 0.6f);
 
