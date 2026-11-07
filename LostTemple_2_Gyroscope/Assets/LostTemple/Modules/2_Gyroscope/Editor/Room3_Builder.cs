@@ -38,7 +38,7 @@ namespace LostTemple.EditorTools
             statueAlign.tutorial = "Tenez le téléphone devant vous et faites-le pivoter comme un volant : la statue en surbrillance tourne avec lui.\n\nAlignez son rayon doré sur le symbole lumineux, puis attendez qu'il se fige.";
             statueAlign.hint = "Tournez lentement le téléphone vers la gauche ou la droite, sans le pencher vers l'avant.";
             statueAlign.fxAnchor = Empty("Statues FX", root, new Vector3(0, 1.5f, 4.5f));
-            statueAlign.cameraPose = Pose("Cam Statues", root, new Vector3(0, 10f, -3f), new Vector3(0, 0, 4.8f));
+            statueAlign.cameraPose = Pose("Cam Statues", root, new Vector3(0, 8.5f, -1f), new Vector3(0, 0, 4.6f));
             var xs = new[] { -4f, 0f, 4f };
             statueAlign.targetAngles = new[] { 60f, -90f, 150f };
             statueAlign.statues = new Transform[3]; statueAlign.beams = new Renderer[3]; statueAlign.targets = new Renderer[3];
@@ -61,7 +61,7 @@ namespace LostTemple.EditorTools
 
             Relic(root, new Vector3(-6f, 0.8f, -10.5f));
             Relic(root, new Vector3(6f, 0.8f, -6f));
-            Relic(root, new Vector3(6f, 0.8f, 7.5f));
+            Relic(root, new Vector3(-6.2f, 0.8f, 1.5f));
 
             foreach (var t in new[] { new Vector3(-6.7f, 2.6f, -9f), new Vector3(6.7f, 2.6f, -9f), new Vector3(-6.7f, 2.6f, 2f), new Vector3(6.7f, 2.6f, 2f), new Vector3(-6.7f, 2.6f, 10f), new Vector3(6.7f, 2.6f, 10f) })
                 Torch(root, t);
@@ -76,11 +76,12 @@ namespace LostTemple.EditorTools
             // Amélioration : miroirs à orienter pour guider un rayon de lumière jusqu'au cristal
             var mirrorMat = Mat("Mirror", new Color(0.85f, 0.9f, 0.95f), 1f, 0.95f);
             var ringMat = Mat("MirrorRing", new Color(0.2f, 0.18f, 0.12f), 0.3f, 0.5f, true);
-            var mirrors = new Transform[2];
-            var rings = new Renderer[2];
-            var mirrorPos = new[] { new Vector3(-3.5f, 0f, 7.5f), new Vector3(-3.5f, 0f, 10.5f) };
-            var mirrorYaw = new[] { 25f, 100f };
-            for (int i = 0; i < 2; i++)
+            // 3 miroirs en chaîne : source → miroir 1 → miroir 2 → miroir 3 → cristal
+            var mirrors = new Transform[3];
+            var rings = new Renderer[3];
+            var mirrorPos = new[] { new Vector3(-3.5f, 0f, 7.5f), new Vector3(-3.5f, 0f, 10.5f), new Vector3(2.5f, 0f, 10.5f) };
+            var mirrorYaw = new[] { 25f, 100f, 160f };   // mal orientés au départ (bonnes valeurs : -45°, 135°, -135°)
+            for (int i = 0; i < 3; i++)
             {
                 Prim(PrimitiveType.Cylinder, "Mirror Base", root, mirrorPos[i] + new Vector3(0, 0.15f, 0), new Vector3(0.9f, 0.15f, 0.9f), Carved);
                 rings[i] = Prim(PrimitiveType.Cylinder, "Mirror Ring", root, mirrorPos[i] + new Vector3(0, 0.31f, 0), new Vector3(1.1f, 0.01f, 1.1f), ringMat, false).GetComponent<Renderer>();
@@ -93,9 +94,9 @@ namespace LostTemple.EditorTools
             var source = Empty("Beam Source", root, new Vector3(-6.3f, 1.3f, 7.5f));
             source.rotation = Quaternion.LookRotation(Vector3.right);
             Box("Beam Emitter", root, new Vector3(-6.55f, 1.3f, 7.5f), new Vector3(0.4f, 0.4f, 0.4f), FlameLit, false);
-            var crystal = Box("Beam Crystal", root, new Vector3(5.6f, 1.3f, 10.5f), new Vector3(0.5f, 0.9f, 0.5f), Mat("CrystalTarget", new Color(0.9f, 0.8f, 0.5f), 0.3f, 0.95f, true));
+            var crystal = Box("Beam Crystal", root, new Vector3(2.5f, 1.3f, 7.2f), new Vector3(0.5f, 0.9f, 0.5f), Mat("CrystalTarget", new Color(0.9f, 0.8f, 0.5f), 0.3f, 0.95f, true));
             crystal.transform.rotation = Quaternion.Euler(0, 45, 0);
-            Prim(PrimitiveType.Cylinder, "Crystal Base", root, new Vector3(5.6f, 0.4f, 10.5f), new Vector3(0.8f, 0.4f, 0.8f), Carved);
+            Prim(PrimitiveType.Cylinder, "Crystal Base", root, new Vector3(2.5f, 0.4f, 7.2f), new Vector3(0.8f, 0.4f, 0.8f), Carved);
             var beamGo = new GameObject("Beam");
             beamGo.transform.SetParent(root, false);
             var lr = beamGo.AddComponent<LineRenderer>();
@@ -107,9 +108,9 @@ namespace LostTemple.EditorTools
 
             var mirrorsPuzzle = root.gameObject.AddComponent<MirrorBeamPuzzle>();
             mirrorsPuzzle.sensor = SensorKind.Gyroscope;
-            mirrorsPuzzle.objective = "Guidez le rayon de lumière jusqu'au cristal avec les miroirs";
-            mirrorsPuzzle.tutorial = "Un rayon jaillit du mur. Faites pivoter le téléphone comme un volant : le miroir sélectionné (anneau doré) tourne avec lui.\n\nUtilisez le bouton « Miroir suivant » pour changer de miroir. Quand le rayon touche le cristal, gardez-le une seconde.";
-            mirrorsPuzzle.hint = "Le premier miroir doit renvoyer le rayon vers le fond de la salle, le second vers le cristal à droite.";
+            mirrorsPuzzle.objective = "Guidez le rayon par les 3 miroirs jusqu'au cristal";
+            mirrorsPuzzle.tutorial = "Un rayon jaillit du mur de gauche. Il doit rebondir sur les 3 miroirs, l'un après l'autre, avant de toucher le cristal.\n\nFaites pivoter le téléphone comme un volant : le miroir sélectionné (anneau doré) tourne avec lui. Le bouton « Miroir suivant » (touche N) passe au miroir suivant.\n\nQuand le rayon touche le cristal, gardez-le une seconde.";
+            mirrorsPuzzle.hint = "Miroir 1 : renvoyez le rayon vers le fond. Miroir 2 : vers la droite, jusqu'au miroir 3. Miroir 3 : vers le cristal, devant lui.";
             mirrorsPuzzle.source = source; mirrorsPuzzle.mirrors = mirrors; mirrorsPuzzle.mirrorHighlights = rings;
             mirrorsPuzzle.target = crystal.GetComponent<Collider>(); mirrorsPuzzle.targetRenderer = crystal.GetComponent<Renderer>();
             mirrorsPuzzle.beam = lr;
@@ -117,7 +118,28 @@ namespace LostTemple.EditorTools
             mirrorsPuzzle.cameraPose = Pose("Cam Mirrors", root, new Vector3(0f, 9.5f, 3.5f), new Vector3(0f, 1f, 9f));
             var st2 = MakeStation(root, "Miroirs", new Vector3(-1.2f, 0f, 6.8f), mirrorsPuzzle);
 
-            var rm3 = AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign, mirrorsPuzzle }, new[] { st, st2 });
+
+            // Épreuve 3 : « Jacques a dit » — tourner le téléphone dans le sens affiché, sinon c'est perdu
+            var tablet = Box("Direction Tablet", root, new Vector3(6.95f, 2.3f, 6f), new Vector3(0.1f, 2.2f, 3.4f), Mat("DirectionTablet", new Color(0.18f, 0.16f, 0.14f), 0.1f, 0.4f, true), false);
+            Box("Tablet Frame", root, new Vector3(6.98f, 2.3f, 6f), new Vector3(0.05f, 2.5f, 3.7f), Gold, false);
+            var arrow = Text3D("Direction Arrow", root, new Vector3(6.85f, 2.75f, 6f), "", 0.13f, new Color(1f, 0.8f, 0.35f));
+            arrow.transform.localRotation = Quaternion.Euler(0f, 90f, 0f);
+            var dirLampMat = Mat("DirectionLamp", new Color(0.12f, 0.13f, 0.16f), 0.2f, 0.8f, true);
+            var direction = root.gameObject.AddComponent<GyroDirectionPuzzle>();
+            direction.lamps = new Renderer[6];
+            for (int i = 0; i < 6; i++)
+                direction.lamps[i] = Prim(PrimitiveType.Sphere, "Direction Lamp " + (i + 1), root, new Vector3(6.85f, 1.55f, 7.25f - i * 0.5f), Vector3.one * 0.26f, dirLampMat, false).GetComponent<Renderer>();
+            direction.sensor = SensorKind.Gyroscope;
+            direction.objective = "Tournez le téléphone dans le sens indiqué";
+            direction.tutorial = "La tablette va afficher une direction : ◀ GAUCHE ou DROITE ▶.\n\nTenez le téléphone devant vous et tournez-le comme un volant dans ce sens. Puis revenez au centre et restez immobile : la direction suivante apparaît.\n\nATTENTION : si vous tournez dans le mauvais sens, ou trop lentement, c'est PERDU (−1 vie). Réussissez 6 directions d'affilée.";
+            direction.hint = "Attendez de bien lire la flèche avant de tourner, et revenez toujours au centre entre deux directions.";
+            direction.arrowText = arrow;
+            direction.tablet = tablet.GetComponent<Renderer>();
+            direction.fxAnchor = arrow.transform;
+            direction.cameraPose = Pose("Cam Directions", root, new Vector3(0.8f, 3.2f, 6f), new Vector3(6.9f, 2.2f, 6f));
+            var st3 = MakeStation(root, "Directions", new Vector3(4.6f, 0f, 6f), direction);
+
+            var rm3 = AddRoomManager(root, 2, door, exit, new PuzzleStep[] { statueAlign, mirrorsPuzzle, direction }, new[] { st, st2, st3 });
             rm3.roomDoneListeners = new MonoBehaviour[] { MakeBoulder(root, 9.4f) };
             return scene;
         }

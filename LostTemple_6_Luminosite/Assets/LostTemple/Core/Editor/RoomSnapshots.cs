@@ -22,8 +22,13 @@ namespace LostTemple.EditorTools
             var rt = new RenderTexture(540, 960, 24);
             cam.targetTexture = rt;
             cam.aspect = 540f / 960f;
+            float baseFov = cam.fieldOfView;
+            // Même calcul que CameraRig : angle vertical garantissant l'angle horizontal voulu pour cet écran
+            float Fov(float horizontal) => Mathf.Clamp(Mathf.Max(baseFov, 2f * Mathf.Atan(Mathf.Tan(horizontal * 0.5f * Mathf.Deg2Rad) / cam.aspect) * Mathf.Rad2Deg), 30f, 105f);
+            cam.fieldOfView = rig != null ? Fov(rig.puzzleHorizontalFov) : baseFov;
             foreach (var t in Object.FindObjectsByType<Transform>())
                 if (t.name.StartsWith("Cam ")) Shot(cam, rt, t.position, t.rotation, Path.Combine(outDir, t.name.Replace(' ', '_') + ".png"));
+            if (rig != null) cam.fieldOfView = Fov(rig.followHorizontalFov);
             if (rig != null && !string.IsNullOrEmpty(points))
                 foreach (var p in points.Split(';'))
                 {

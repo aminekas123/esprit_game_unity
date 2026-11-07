@@ -25,14 +25,14 @@ namespace LostTemple
 
         void FixedUpdate()
         {
-            if (!IsActive || ball == null) return;
+            if (!IsActive || ball == null || gameOver) return;
             Vector2 tilt = Sensors.GetTilt();
             ball.AddForce(new Vector3(tilt.x, 0f, tilt.y) * acceleration, ForceMode.Acceleration);
         }
 
         void Update()
         {
-            if (!IsActive) return;
+            if (!IsActive || gameOver) return;
             if (ball.position.y < killY)
             {
                 falls++;
@@ -56,6 +56,40 @@ namespace LostTemple
             ball.transform.position = spawn.position;
             bestZ = spawn.position.z;
         }
+
+        /// <summary>Échec imposé par un autre élément (la boule rivale a atteint le départ) : retour au départ.</summary>
+        public void Fail(string message)
+        {
+            if (!IsActive) return;
+            falls++;
+            GameManager.Instance.AddFall();
+            Audio.Play(Sfx.Fail);
+            UIManager.Instance.ShowToast(message);
+            Respawn();
+        }
+
+        /// <summary>
+        /// Défaite : la boule rivale a atteint le départ du joueur. Tout s'arrête et l'écran GAME OVER
+        /// propose de recommencer la salle.
+        /// </summary>
+        public void GameOver(string message)
+        {
+            if (!IsActive || gameOver) return;
+            gameOver = true;
+            ball.isKinematic = true;
+            GameManager.Instance.AddFall();
+            Audio.Play(Sfx.Fail);
+            Audio.Play(Sfx.Roar, 0.5f);
+            CameraRig.Shake(0.4f);
+            UIManager.Instance.FlashDamage();
+            UIManager.Instance.ShowMessage("GAME OVER", message, "Recommencer", () => GameManager.Instance.RestartRoom());
+        }
+
+        bool gameOver;
+        public bool IsGameOver => gameOver;
+
+        /// <summary>La boule rivale vient d'être percutée : compte comme une progression (pas d'indice).</summary>
+        public void NotifyHit() => ReportProgress();
 
         /// <summary>Plateau à trous : la boule est tombée dans un trou.</summary>
         public void OnBallFellInHole()
