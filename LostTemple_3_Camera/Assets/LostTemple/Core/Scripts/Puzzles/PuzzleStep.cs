@@ -15,6 +15,8 @@ namespace LostTemple
         public SensorKind sensor;
         [Tooltip("Décocher pour une étape purement tactile (pas de capteur ni de commande alternative).")]
         public bool usesSensor = true;
+        [Tooltip("Cocher pour démarrer l'étape sans fenêtre d'explication (pas de bouton à valider).")]
+        public bool skipTutorial;
         [Tooltip("Point où jaillissent les étincelles quand l'étape est réussie.")]
         public Transform fxAnchor;
         [Tooltip("Point de vue de la caméra pendant l'énigme (optionnel).")]

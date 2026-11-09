@@ -31,6 +31,8 @@ namespace LostTemple
         [Tooltip("Composants (IRoomDoneListener) prévenus quand la salle est terminée, ex. le rocher géant.")]
         public MonoBehaviour[] roomDoneListeners;
         public float hintDelay = 25f;
+        [Tooltip("Titre affiché à l'entrée de la salle (vide = titre de l'histoire).")]
+        public string titleOverride;
 
         int stepIndex = -1;
         bool stepStarted;
@@ -56,7 +58,7 @@ namespace LostTemple
             foreach (var s in steps) { s.Completed += OnStepCompleted; s.Progressed += OnProgress; }
             foreach (var st in stations) if (st != null) st.SetMarker(false);
             yield return null;
-            UIManager.Instance.ShowRoomTitle(Journal.RoomTitles[Mathf.Clamp(storyIndex, 0, Journal.RoomTitles.Length - 1)]);
+            UIManager.Instance.ShowRoomTitle(!string.IsNullOrEmpty(titleOverride) ? titleOverride : Journal.RoomTitles[Mathf.Clamp(storyIndex, 0, Journal.RoomTitles.Length - 1)]);
             yield return new WaitForSeconds(1f);
             roomStart = Time.time;
             AdvanceStep();
@@ -167,7 +169,8 @@ namespace LostTemple
         IEnumerator PrepareAndBegin(PuzzleStep step)
         {
             bool ok = false;
-            UIManager.Instance.ShowTutorial(step, () => ok = true);
+            if (step.skipTutorial) ok = true;
+            else UIManager.Instance.ShowTutorial(step, () => ok = true);
             while (!ok) yield return null;
 
             // Le micro demande une permission expliquée au joueur, puis une mesure du bruit de fond.

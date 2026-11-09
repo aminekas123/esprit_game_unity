@@ -36,13 +36,15 @@ namespace LostTemple
         RawImage cameraImage;
         AspectRatioFitter cameraAspect;
         Text cameraInstruction;
-        GameObject cameraShootButton, cameraFallbackRow;
+        GameObject cameraShootButton, cameraFallbackRow, cameraFreeRow, cameraDoneButton;
+        Action cameraDone;   // mode libre : le joueur termine quand il veut, sans fenêtre de confirmation
         Image cameraFlash;
         // Scanner en direct : part de la couleur demandée au centre du cadre, mise à jour 4 fois par seconde
         GameObject scanBar;
         Image scanFill;
         Text scanText;
         PhotoTarget scanTarget;
+        bool freeScan;   // mode libre : la jauge montre la couleur dominante au lieu d'une couleur demandée
         const float ScanThreshold = 0.3f;
         WebCamTexture webcam;
         Action<Color32[]> cameraCallback;
@@ -97,6 +99,22 @@ namespace LostTemple
                 b.GetComponentInChildren<Text>().fontSize = 36;
             }
 
+            // Mode libre sans caméra : une pastille par couleur reconnue (même liste que le détecteur)
+            cameraFreeRow = Rect("FreeFallback", bottom).gameObject;
+            Size(cameraFreeRow.transform as RectTransform, 330);
+            var fg = cameraFreeRow.AddComponent<GridLayoutGroup>();
+            fg.cellSize = new Vector2(155, 100); fg.spacing = new Vector2(8, 8);
+            fg.childAlignment = TextAnchor.MiddleCenter; fg.constraint = GridLayoutGroup.Constraint.FixedColumnCount; fg.constraintCount = 6;
+            for (int i = 0; i < ColorAnalyzer.ClassCount; i++)
+            {
+                Color sc = ColorAnalyzer.Sample(i);
+                var fb = MakeButton(cameraFreeRow.transform, ColorAnalyzer.NameOf(i), () => SimulatedColor(sc), 100, sc * 0.7f);
+                fb.GetComponentInChildren<Text>().fontSize = 24;
+            }
+            cameraFreeRow.SetActive(false);
+            cameraDoneButton = MakeButton(bottom, "Terminer ✓", FinishFree, 120, new Color(0.15f, 0.35f, 0.5f)).gameObject;
+            cameraDoneButton.SetActive(false);
+
             var sb = Panel("Scanner", cameraView.transform, new Color(0, 0, 0, 0.6f));
             sb.rectTransform.anchorMin = new Vector2(0.15f, 0.33f); sb.rectTransform.anchorMax = new Vector2(0.85f, 0.37f);
             sb.rectTransform.offsetMin = sb.rectTransform.offsetMax = Vector2.zero;
@@ -128,9 +146,19 @@ namespace LostTemple
             scanBar.SetActive(!fallback);
             scanText.text = "Visez l'objet…";
             scanFill.rectTransform.anchorMax = new Vector2(0f, 1f);
-            cameraFallbackRow.SetActive(fallback);
+            cameraFallbackRow.SetActive(fallback && !freeScan);
+            cameraFreeRow.SetActive(fallback && freeScan);
+            cameraDoneButton.SetActive(freeScan && cameraDone != null);
             cameraImage.color = fallback ? new Color(0.1f, 0.1f, 0.15f) : Color.white;
             if (!fallback) StartCoroutine(StartWebcam());
+        }
+
+        /// <summary>Scan libre : n'importe quelle couleur reconnue (la jauge affiche la couleur dominante).</summary>
+public void ShowFree(string instruction, Action<Color32[]> onShot, Action onDone = null)
+        {
+            freeScan = true;
+            cameraDone = onDone;
+            Show(instruction, PhotoTarget.Red, onShot);
         }
 
         IEnumerator StartWebcam()
@@ -144,7 +172,8 @@ namespace LostTemple
                 if (!UnityEngine.Android.Permission.HasUserAuthorizedPermission(UnityEngine.Android.Permission.Camera))
                 {
                     cameraShootButton.SetActive(false);
-                    cameraFallbackRow.SetActive(true);
+                    cameraFallbackRow.SetActive(!freeScan);
+                    cameraFreeRow.SetActive(freeScan);
                     UIManager.Instance.ShowToast("Caméra refusée : utilisez les boutons de couleur.");
                     yield break;
                 }
@@ -166,11 +195,16 @@ namespace LostTemple
                 if (Time.unscaledTime >= nextScan && webcam.width >= 32)
                 {
                     nextScan = Time.unscaledTime + 0.25f;
-                    float share = PhotoPuzzle.Share(CenterPixels(8), scanTarget);
+                    var centerPx = CenterPixels(8);
+                    PhotoTarget shown = scanTarget;
+                    string freeName = null;
+                    float share;
+                    if (freeScan) { ColorAnalyzer.Analyze(centerPx, ScanThreshold, out DetectedColor dc); share = dc.share; freeName = dc.name; }
+                    else share = PhotoPuzzle.Share(centerPx, scanTarget);
                     bool ok = share >= ScanThreshold;
                     scanFill.rectTransform.anchorMax = new Vector2(Mathf.Clamp01(share / (ScanThreshold * 2f)), 1f);
                     scanFill.color = ok ? new Color(0.35f, 0.85f, 0.45f) : Gold;
-                    scanText.text = $"{PhotoPuzzle.Describe(scanTarget)} : {share * 100f:0} %" + (ok ? "  ✓ Prenez la photo !" : "");
+                    scanText.text = $"{(freeScan ? freeName : PhotoPuzzle.Describe(shown))} : {share * 100f:0} %" + (ok ? "  ✓ Prenez la photo !" : "");
                 }
                 cameraAspect.aspectRatio = webcam.height > 0 ? webcam.width / (float)webcam.height : 1.5f;
                 cameraImage.rectTransform.localEulerAngles = new Vector3(0, 0, -webcam.videoRotationAngle);
@@ -213,6 +247,21 @@ namespace LostTemple
             StartCoroutine(Shutter(px));
         }
 
+void SimulatedColor(Color c)
+        {
+            var px = new Color32[64];
+            for (int i = 0; i < px.Length; i++) px[i] = c;
+            StartCoroutine(Shutter(px));
+        }
+
+        void FinishFree()
+        {
+            var done = cameraDone;
+            Hide();
+            done?.Invoke();
+        }
+
+
         IEnumerator Shutter(Color32[] pixels)
         {
             AudioManager.Instance.Play(Sfx.Shutter);
@@ -230,8 +279,10 @@ namespace LostTemple
             cb?.Invoke(pixels);
         }
 
-        public void Hide()
+public void Hide()
         {
+            freeScan = false;
+            cameraDone = null;
             if (webcam != null) webcam.Stop();
             if (cameraView != null) cameraView.SetActive(false);
         }

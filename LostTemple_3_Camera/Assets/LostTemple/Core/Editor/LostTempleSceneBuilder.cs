@@ -55,8 +55,30 @@ namespace LostTemple.EditorTools
                 if (info != null) builders.Add((info, mi));
             }
             builders.Sort((a, b) => a.info.Order.CompareTo(b.info.Order));
-            foreach (var b in builders)
-                scenes.Add(Save((Scene)b.method.Invoke(null, null), b.info.Scene, ModulesDir + "/" + b.info.Module + "/Scenes"));
+            for (int i = 0; i < builders.Count; i++)
+            {
+                var b = builders[i];
+                string dir = ModulesDir + "/" + b.info.Module + "/Scenes";
+                var hand = HandEditedScenes(b.info.Module);
+                string path = $"{dir}/{b.info.Scene}.unity";
+                if (hand.Contains(b.info.Scene) && File.Exists(path))
+                {
+                    // Scène retouchée à la main dans l'éditeur : on la garde telle quelle (pas de régénération)
+                    Debug.Log($"[Lost Temple] {b.info.Scene} : scène faite à la main, conservée.");
+                    scenes.Add(new EditorBuildSettingsScene(path, true));
+                }
+                else scenes.Add(Save((Scene)b.method.Invoke(null, null), b.info.Scene, dir));
+
+                // Après la dernière salle générée d'un module : ses scènes faites à la main en plus (ex. Room8_Decor)
+                bool lastOfModule = i == builders.Count - 1 || builders[i + 1].info.Module != b.info.Module;
+                if (!lastOfModule) continue;
+                foreach (var name in hand)
+                {
+                    string extra = $"{dir}/{name}.unity";
+                    if (builders.Exists(x => x.info.Module == b.info.Module && x.info.Scene == name) || !File.Exists(extra)) continue;
+                    scenes.Add(new EditorBuildSettingsScene(extra, true));
+                }
+            }
             EditorBuildSettings.scenes = scenes.ToArray();
             var modules = new HashSet<string>();
             foreach (var b in builders) modules.Add(b.info.Module);
@@ -64,6 +86,24 @@ namespace LostTemple.EditorTools
             AssetDatabase.SaveAssets();
             EditorSceneManager.OpenScene($"{CoreDir}/Scenes/{GameManager.MenuScene}.unity");
             Debug.Log($"[Lost Temple] {scenes.Count} scènes générées et ajoutées aux Build Settings.");
+        }
+
+        /// <summary>
+        /// Scènes d'un module modifiées à la main dans l'éditeur, listées (une par ligne) dans
+        /// Modules/&lt;module&gt;/Scenes/HandEdited.txt : elles ne sont jamais régénérées, et celles qui n'ont pas
+        /// de générateur sont ajoutées aux Build Settings après les salles du module, dans l'ordre du fichier.
+        /// </summary>
+        static List<string> HandEditedScenes(string module)
+        {
+            var list = new List<string>();
+            string file = $"{ModulesDir}/{module}/Scenes/HandEdited.txt";
+            if (!File.Exists(file)) return list;
+            foreach (var line in File.ReadAllLines(file))
+            {
+                string n = line.Trim();
+                if (n.Length > 0 && !n.StartsWith("#")) list.Add(n);
+            }
+            return list;
         }
 
         static string ShortModuleName(string module)
