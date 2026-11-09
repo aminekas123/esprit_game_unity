@@ -1,0 +1,4 @@
+# Scènes modifiées à la main dans Unity : le générateur ne les écrase pas.
+# Les scènes sans générateur sont ajoutées au jeu après les salles du module, dans cet ordre.
+Room7_Coyote
+Room8_Decor

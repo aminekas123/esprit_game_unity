@@ -7,6 +7,7 @@ namespace LostTemple
     /// dédié (PuzzleStep.cameraPose) pendant une énigme. Gère aussi les secousses.
     /// L'angle de vue s'adapte à la forme de l'écran : sur un téléphone en portrait (écran étroit),
     /// la caméra s'élargit pour garder la même largeur visible qu'en paysage.
+    /// Option (followHeading) : la caméra se place derrière l'explorateur et tourne avec lui.
     /// </summary>
     public class CameraRig : MonoBehaviour
     {
@@ -18,6 +19,15 @@ namespace LostTemple
         public float puzzleHorizontalFov = 66f;
         [Tooltip("Largeur de vue (angle horizontal, en degrés) garantie pendant l'exploration.")]
         public float followHorizontalFov = 44f;
+        [Tooltip("La caméra se place derrière l'explorateur et tourne avec lui (sinon : vue fixe vers le nord).")]
+        public bool followHeading;
+        [Tooltip("Délai de rotation de la caméra (plus grand = plus doux).")]
+        public float yawSmoothTime = 0.45f;
+        [Tooltip("Vitesse de rotation maximale de la caméra (degrés par seconde).")]
+        public float maxYawSpeed = 140f;
+
+        float yaw, yawVel;
+        bool yawInit;
 
         static float shake;
         Camera cam;
@@ -45,6 +55,7 @@ namespace LostTemple
             var step = RoomManager.Current != null ? RoomManager.Current.ActiveStep : null;
             if (step != null && step.IsActive && step.cameraPose != null)
             {
+                yawInit = false;   // à la fin de l'énigme, la caméra revient derrière l'explorateur
                 pos = step.cameraPose.position;
                 rot = step.cameraPose.rotation;
                 posing = true;
@@ -52,13 +63,26 @@ namespace LostTemple
             }
             if (target != null)
             {
-                Vector3 focus = target.position + Vector3.up + Vector3.forward * lookAhead;
-                pos = focus + offset;
+                Quaternion yr = Quaternion.identity;
+                if (followHeading) { UpdateYaw(); yr = Quaternion.Euler(0f, yaw, 0f); }
+                Vector3 focus = target.position + Vector3.up + yr * Vector3.forward * lookAhead;
+                pos = focus + yr * offset;
                 rot = Quaternion.LookRotation(focus - pos);
                 return true;
             }
             pos = transform.position; rot = transform.rotation;
             return false;
+        }
+
+        /// <summary>Oriente la caméra derrière l'explorateur, en douceur, seulement quand il avance.</summary>
+        void UpdateYaw()
+        {
+            float want = target.eulerAngles.y;
+            if (!yawInit) { yaw = want; yawVel = 0f; yawInit = true; return; }
+            var pc = PlayerController.Instance;
+            bool moving = pc == null || pc.Speed01 > 0.15f;
+            if (moving) yaw = Mathf.SmoothDampAngle(yaw, want, ref yawVel, yawSmoothTime, maxYawSpeed);
+            else yawVel = 0f;
         }
 
         /// <summary>

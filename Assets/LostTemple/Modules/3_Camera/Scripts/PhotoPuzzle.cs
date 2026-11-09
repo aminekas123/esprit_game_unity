@@ -19,6 +19,9 @@ namespace LostTemple
         [Tooltip("Tirer 3 missions au hasard à chaque partie au lieu de la liste fixe.")]
         public bool randomize = true;
 
+        /// <summary>Déclenché quand une photo est validée : cible détectée et sa couleur. Écouté par ColorObjectSpawner.</summary>
+        public static event System.Action<PhotoTarget, Color> ColorDetected;
+
         int index;
 
         void Reset() { sensor = SensorKind.Camera; }
@@ -52,6 +55,7 @@ namespace LostTemple
             {
                 string frag = fragments[Mathf.Min(index, fragments.Length - 1)];
                 SensorStats.Photos.Add(Describe(target).ToLower());
+                ColorDetected?.Invoke(target, Sample(target));
                 index++;
                 ReportProgress();
                 Audio.Play(Sfx.Reveal);
@@ -69,6 +73,24 @@ namespace LostTemple
                 Audio.Play(Sfx.Fail);
                 coyote.Say($"Hmm… je ne vois pas assez de {Describe(target)} au centre de ta photo ({share * 100f:0} %).\n\nApproche-toi pour que l'objet remplisse le cadre, avec assez de lumière.", "Réessayer", Ask);
             }
+        }
+
+        /// <summary>
+        /// Couleur dominante parmi les couleurs reconnues (réutilise Share, donc les mêmes seuils).
+        /// Les vraies couleurs priment sur clair/sombre. Renvoie vrai si la part dépasse minShare.
+        /// </summary>
+        public static bool DetectColor(Color32[] px, float minShare, out PhotoTarget best, out float share)
+        {
+            PhotoTarget bc = PhotoTarget.Red, bt = PhotoTarget.Bright;
+            float sc = 0f, st = 0f;
+            foreach (var t in new[] { PhotoTarget.Red, PhotoTarget.Blue, PhotoTarget.Green, PhotoTarget.Yellow })
+            { float s = Share(px, t); if (s > sc) { sc = s; bc = t; } }
+            foreach (var t in new[] { PhotoTarget.Bright, PhotoTarget.Dark })
+            { float s = Share(px, t); if (s > st) { st = s; bt = t; } }
+            if (sc > 0f && sc >= minShare) { best = bc; share = sc; return true; }
+            if (st > 0f && st >= minShare) { best = bt; share = st; return true; }
+            if (sc >= st) { best = bc; share = sc; } else { best = bt; share = st; }
+            return false;
         }
 
         public static string Describe(PhotoTarget t)
