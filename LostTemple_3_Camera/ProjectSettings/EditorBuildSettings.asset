@@ -11,5 +11,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/LostTemple/Modules/3_Camera/Scenes/Room7_Coyote.unity
     guid: ff74570cc01e741af93a7d6cee40ee7e
+  - enabled: 1
+    path: Assets/LostTemple/Modules/3_Camera/Scenes/Room8_Decor.unity
+    guid: ee48601f74e6648019890df571752c6f
   m_configObjects:
+    com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

@@ -35,6 +35,10 @@ namespace LostTemple
         Vector3 checkpoint;
         Quaternion checkpointRot;
         float hurtTimer;
+        // Repère de déplacement figé tant que le joystick reste touché : la caméra tourne derrière
+        // l'explorateur sans que sa trajectoire se mette à tourner en rond.
+        float basisYaw;
+        bool hadInput;
 
         void Awake()
         {
@@ -46,7 +50,7 @@ namespace LostTemple
 
         void OnDestroy() { if (Instance == this) Instance = null; }
 
-        void Update()
+void Update()
         {
             float dt = Time.deltaTime;
             if (dt <= 0f) return;
@@ -54,13 +58,14 @@ namespace LostTemple
 
             Vector2 input = Frozen ? Vector2.zero : Vector2.ClampMagnitude(StickInput + KeyboardInput(), 1f);
 
-            Vector3 fwd = Vector3.forward, right = Vector3.right;
             var cam = Camera.main;
-            if (cam != null)
-            {
-                fwd = Vector3.ProjectOnPlane(cam.transform.forward, Vector3.up).normalized;
-                right = Vector3.Cross(Vector3.up, fwd);
-            }
+            float camYaw = cam != null ? cam.transform.eulerAngles.y : 0f;
+            bool has = input.sqrMagnitude > 0.01f;
+            if (!has || !hadInput) basisYaw = camYaw;   // nouveau toucher : on repart de la vue actuelle
+            hadInput = has;
+            var basis = Quaternion.Euler(0f, basisYaw, 0f);
+            Vector3 fwd = basis * Vector3.forward, right = basis * Vector3.right;
+
             Vector3 move = (right * input.x + fwd * input.y) * speed;
             if (move.sqrMagnitude > 0.01f)
                 transform.rotation = Quaternion.RotateTowards(transform.rotation, Quaternion.LookRotation(move), turnSpeed * dt);
