@@ -231,8 +231,9 @@ namespace LostTemple
             trt.anchorMin = new Vector2(0, 1); trt.anchorMax = Vector2.one; trt.pivot = new Vector2(0.5f, 1);
             trt.sizeDelta = new Vector2(0, 300);
 
-            objectiveText = Label(top.transform, "", 46, TextAnchor.UpperLeft);
-            Stretch(objectiveText.rectTransform, 40, 90, 200, 30);
+            objectiveText = Label(top.transform, "", 40, TextAnchor.UpperLeft);
+            // S'arrête avant le compteur de vies (en haut à droite) pour ne pas le chevaucher
+            Stretch(objectiveText.rectTransform, 40, 80, 460, 26);
             sensorText = Label(top.transform, "", 36, TextAnchor.LowerLeft, Gold);
             livesText = Label(top.transform, "", 46, TextAnchor.MiddleRight, new Color(1f, 0.82f, 0.4f));
             var lrt = livesText.rectTransform;
@@ -286,13 +287,18 @@ namespace LostTemple
             // Missions de la salle
             var mp = Panel("Missions", hud.transform, new Color(0.03f, 0.04f, 0.1f, 0.55f));
             var mrt = mp.rectTransform;
-            mrt.anchorMin = mrt.anchorMax = new Vector2(0, 1); mrt.pivot = new Vector2(0, 1);
+            // Moitié gauche de l'écran (proportionnelle) : les jauges occupent la droite, à partir de 55 %
+            mrt.anchorMin = new Vector2(0, 1); mrt.anchorMax = new Vector2(0.53f, 1); mrt.pivot = new Vector2(0, 1);
             mrt.anchoredPosition = new Vector2(20, -365);
-            mp.gameObject.AddComponent<VerticalLayoutGroup>().padding = new RectOffset(24, 24, 14, 14);
+            var mvl = mp.gameObject.AddComponent<VerticalLayoutGroup>();
+            mvl.padding = new RectOffset(24, 24, 14, 14);
+            mvl.childControlWidth = true; mvl.childControlHeight = true; mvl.childForceExpandWidth = true;
+            // Largeur fixe et retour à la ligne : une longue mission ne sort plus de l'écran
+            mrt.sizeDelta = new Vector2(-20, 0);
             var mfit = mp.gameObject.AddComponent<ContentSizeFitter>();
-            mfit.horizontalFit = ContentSizeFitter.FitMode.PreferredSize; mfit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-            missionText = Label(mp.transform, "", 34, TextAnchor.UpperLeft);
-            missionText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            mfit.horizontalFit = ContentSizeFitter.FitMode.Unconstrained; mfit.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            missionText = Label(mp.transform, "", 30, TextAnchor.UpperLeft);
+            missionText.horizontalOverflow = HorizontalWrapMode.Wrap;
 
             // Joystick de déplacement de l'explorateur
             var stickBg = Panel("Move Stick", hud.transform, new Color(1, 1, 1, 0.1f));
@@ -503,8 +509,10 @@ namespace LostTemple
         {
             modal = FullScreen("Modal", new Color(0.02f, 0.03f, 0.08f, 0.8f));
             var card = Card(modal);
-            modalTitle = Label(card, "", 60, TextAnchor.MiddleCenter, Gold);
-            Size(modalTitle, 100);
+            modalTitle = Label(card, "", 52, TextAnchor.MiddleCenter, Gold);
+            // Hauteur selon le texte : un long titre passe sur plusieurs lignes sans chevaucher le texte
+            var titleLe = Size(modalTitle, 100);
+            titleLe.preferredHeight = -1; titleLe.minHeight = 90;
             modalBody = Label(card, "", 42);
             modalBody.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
             modalButton = MakeButton(card, "OK", null, 140, new Color(0.55f, 0.38f, 0.1f));
@@ -733,7 +741,9 @@ namespace LostTemple
             fill.rectTransform.anchorMin = Vector2.zero; fill.rectTransform.anchorMax = Vector2.one;
             fill.rectTransform.offsetMin = fill.rectTransform.offsetMax = Vector2.zero;
             var t = Label(bg.transform, label, 32);
-            Stretch(t.rectTransform);
+            Stretch(t.rectTransform, 8, 0, 8, 0);
+            // Texte réduit automatiquement s'il est trop long pour la jauge (pas de débordement)
+            t.resizeTextForBestFit = true; t.resizeTextMinSize = 16; t.resizeTextMaxSize = 32;
             go = bg.gameObject;
             return fill;
         }
@@ -762,10 +772,13 @@ namespace LostTemple
             cb.anchorMin = cb.anchorMax = new Vector2(1, 0); cb.pivot = new Vector2(1, 0);
             cb.sizeDelta = new Vector2(300, 200); cb.anchoredPosition = new Vector2(-30, 120);
 
-            demoButton = MakeButton(hud.transform, "DÉMO — Salle suivante ▶", () => GameManager.Instance.NextRoom(), 110, new Color(0.15f, 0.35f, 0.5f)).gameObject;
+            demoButton = MakeButton(hud.transform, "Salle suivante ▶", () => GameManager.Instance.NextRoom(), 100, new Color(0.15f, 0.35f, 0.5f)).gameObject;
             var db = (RectTransform)demoButton.transform;
-            db.anchorMin = db.anchorMax = new Vector2(0.5f, 1); db.pivot = new Vector2(0.5f, 1);
-            db.sizeDelta = new Vector2(620, 110); db.anchoredPosition = new Vector2(0, -560);
+            // À droite, sous les jauges : ne recouvre pas la liste des missions (à gauche)
+            db.anchorMin = new Vector2(0.55f, 1); db.anchorMax = new Vector2(0.97f, 1); db.pivot = new Vector2(1, 1);
+            db.sizeDelta = new Vector2(0, 100); db.anchoredPosition = new Vector2(0, -560);
+            var dt = demoButton.GetComponentInChildren<Text>();
+            dt.resizeTextForBestFit = true; dt.resizeTextMinSize = 20; dt.resizeTextMaxSize = 36;
 
             // Cartes d'histoire (cinématique)
             storyView = FullScreen("Story", new Color(0, 0, 0, 0.92f));
