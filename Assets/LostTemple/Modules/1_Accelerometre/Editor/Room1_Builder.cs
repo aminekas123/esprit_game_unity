@@ -52,7 +52,7 @@ namespace LostTemple.EditorTools
             Prim(PrimitiveType.Cylinder, "Sweeper Axis", root, new Vector3(1.4f, 0.45f, 1.4f), new Vector3(0.3f, 0.25f, 0.3f), Gold, false);
             var sweeper = Box("Sweeper", root, new Vector3(1.4f, 0.5f, 1.4f), new Vector3(1.7f, 0.25f, 0.2f), Metal);
             sweeper.AddComponent<Rigidbody>();
-            sweeper.AddComponent<Sweeper>().speed = 55f;
+            sweeper.AddComponent<Sweeper>().speed = 40f;
 
             SpikeTrap(root, new Vector3(-5f, 0, -1.5f), new Vector2(4f, 1.6f), 0f);
             SpikeTrap(root, new Vector3(-5f, 0, 2.5f), new Vector2(4f, 1.6f), 1.4f);
@@ -73,7 +73,7 @@ namespace LostTemple.EditorTools
             var spawn = Empty("Ball Spawn", root, new Vector3(0, 0.6f, -4.8f));
             var ball = Prim(PrimitiveType.Sphere, "Ball", root, spawn.localPosition, Vector3.one * 0.5f, Gold);
             var rb = ball.AddComponent<Rigidbody>();
-            rb.mass = 1f; rb.linearDamping = 0.4f; rb.angularDamping = 0.6f;
+            rb.mass = 1f; rb.linearDamping = 1.2f; rb.angularDamping = 1f;
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
             rb.isKinematic = true;
@@ -144,7 +144,7 @@ namespace LostTemple.EditorTools
             plateau.objective = "Menez la boule au coin doré sans tomber dans les trous";
             plateau.tutorial = "Deuxième épreuve : un plateau percé de trous noirs.\n\nInclinez doucement le téléphone pour guider la boule jusqu'au coin doré. Si elle passe sur un trou, elle revient au départ.";
             plateau.hint = "Longez les bords et redressez le téléphone avant chaque trou pour freiner.";
-            plateau.acceleration = 9f;
+            plateau.acceleration = 6f;
             plateau.fxAnchor = goalPlate2.transform;
             plateau.cameraPose = Pose("Cam Plateau", root, new Vector3(3.9f, 7.5f, 3.6f), new Vector3(3.9f, 0.6f, 8.1f));
             plateau.ball = rb2; plateau.spawn = spawn2; plateau.goal = g2col; plateau.goalPlate = goalPlate2;

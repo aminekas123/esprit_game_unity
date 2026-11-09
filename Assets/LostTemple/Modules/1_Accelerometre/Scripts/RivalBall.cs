@@ -18,9 +18,9 @@ namespace LostTemple
         public NavMeshSurface course;
         public Transform rivalStart;
         public Transform playerStart;
-        public float speed = 1.1f;
+        public float speed = 0.85f;
         [Tooltip("Vitesse d'impact minimale (m/s) pour faire tomber la boule rivale.")]
-        public float hitSpeed = 1.6f;
+        public float hitSpeed = 1.2f;
         public float respawnDelay = 3.5f;
         public float killY = -3f;
 

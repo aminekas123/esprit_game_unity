@@ -9,7 +9,11 @@ namespace LostTemple
         public Transform spawn;
         public Collider goal;
         public Renderer goalPlate;
-        public float acceleration = 14f;
+        public float acceleration = 8f;
+        [Tooltip("Vitesse maximale de la boule (m/s) : elle ne peut pas s'emballer.")]
+        public float maxSpeed = 2.2f;
+        [Tooltip("Petites inclinaisons ignorées (mains qui tremblent).")]
+        public float deadZone = 0.08f;
         public float killY = -3f;
 
         float bestZ;
@@ -27,7 +31,18 @@ namespace LostTemple
         {
             if (!IsActive || ball == null || gameOver) return;
             Vector2 tilt = Sensors.GetTilt();
+            // Zone morte : la boule ne bouge pas pour un léger tremblement, puis la réponse reprend en douceur
+            float m = tilt.magnitude;
+            tilt = m <= deadZone ? Vector2.zero : tilt / m * Mathf.Min(1f, (m - deadZone) / (1f - deadZone));
             ball.AddForce(new Vector3(tilt.x, 0f, tilt.y) * acceleration, ForceMode.Acceleration);
+            // Vitesse limitée : la boule reste contrôlable sur les ponts étroits
+            Vector3 v = ball.linearVelocity;
+            Vector3 flat = new Vector3(v.x, 0f, v.z);
+            if (flat.magnitude > maxSpeed)
+            {
+                flat = flat.normalized * maxSpeed;
+                ball.linearVelocity = new Vector3(flat.x, v.y, flat.z);
+            }
         }
 
         void Update()
