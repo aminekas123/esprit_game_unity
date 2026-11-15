@@ -287,6 +287,8 @@ namespace LostTemple
         }
 
         public float MicRawLevel => micLevel;
+        /// <summary>Volume instantané (≈30 ms, sans lissage) : sert à compter des claquements de mains rapprochés.</summary>
+        public float MicInstant { get; private set; }
         public float MicThreshold => Mathf.Max(MicNoiseFloor * 3f, 0.03f) / MicSensitivity;
 
         /// <summary>Vrai si le capteur de proximité est couvert (main près de l'écouteur).</summary>
@@ -386,6 +388,7 @@ namespace LostTemple
             float s = 0f;
             for (int i = 0; i < micBuffer.Length; i++) s += micBuffer[i] * micBuffer[i];
             float rms = Mathf.Sqrt(s / micBuffer.Length);
+            MicInstant = rms;
             // Montée rapide, descente lente : un souffle court reste détectable.
             micLevel = rms > micLevel ? Mathf.Lerp(micLevel, rms, 1f - Mathf.Exp(-30f * dt)) : Mathf.Lerp(micLevel, rms, 1f - Mathf.Exp(-6f * dt));
         }
